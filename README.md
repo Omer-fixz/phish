@@ -37,7 +37,7 @@ phish/
 ├── data/processed/  ما يولّده المشروع
 ├── models/       النموذج وترتيب خصائصه
 ├── reports/      figures/ للرسومات و tables/ للجداول
-├── docs/         قاموس البيانات والبرومبت
+├── docs/         data_dictionary.md (قاموس الخصائص) · project_brief.md
 └── archive/      كود قديم للتوثيق فقط — لا يُستخدم
 ```
 

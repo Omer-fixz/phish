@@ -88,8 +88,8 @@ phish/
 │   └── tables/                  # الجداول CSV
 │
 ├── docs/                        # ← توثيق
-│   ├── قاموس_البيانات.md
-│   └── البرومبت_المصحح.md
+│   ├── data_dictionary.md   # قاموس البيانات (محتواه عربي)
+│   └── project_brief.md     # البرومبت المصحّح (محتواه عربي)
 │
 └── archive/                     # ← كود قديم للتوثيق فقط، لا يُستخدم
     └── sorting_OLD_DO_NOT_USE.py
@@ -107,6 +107,9 @@ phish/
 | `models/` | نموذج + ترتيب خصائصه معاً | «ما الذي أنشره؟» |
 | `reports/` | ما يُنسخ إلى الرسالة | «أين الرسومات والجداول؟» |
 | `docs/` | نصوص للقراءة | «أين الشرح؟» |
+
+> أسماء ملفات `docs/` لاتينية رغم أن محتواها عربي، لأن أسماء الملفات
+> العربية تظهر مشوّهة في واجهة GitHub بسبب ترميز أسماء الملفات على ويندوز.
 | `archive/` | لا يُستخدم | «لماذا هذا الملف موجود؟» |
 
 الفصل بين `raw` و`processed` هو الأهم: **يمكنك حذف `processed` و`models` و`reports` كاملة وإعادة توليدها بأمرين**، بينما `raw` لا يُعاد توليده أبداً.
@@ -128,8 +131,8 @@ phish/
 | 9 | `test_api.py` | `tests/test_api.py` | `git mv` |
 | 10 | `test_integration.py` | `tests/test_integration.py` | `git mv` |
 | 11 | `test_external.py` | `tests/test_external.py` | `git mv` |
-| 12 | `قاموس_البيانات.md` | `docs/قاموس_البيانات.md` | `git mv` |
-| 13 | `البرومبت_المصحح.md` | `docs/البرومبت_المصحح.md` | `git mv` |
+| 12 | `قاموس_البيانات.md` | `docs/data_dictionary.md` | `git mv` |
+| 13 | `البرومبت_المصحح.md` | `docs/project_brief.md` | `git mv` |
 | 14 | `Final_Phishing_Dataset_96k.csv` | `data/raw/` | `mv` (غير متتبَّع) |
 | 15 | `data/top-1m.csv` | `data/raw/top-1m.csv` | `mv` |
 | 16 | `data/phishtank.csv.gz` | `data/raw/phishtank.csv.gz` | `mv` |
