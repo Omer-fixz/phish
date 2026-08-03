@@ -8,10 +8,6 @@ data/*
 data/raw/*
 data/processed/*
 
-# نسخة قديمة من المصدر بقيت في الجذر لأن Excel كان يقفلها وقت النقل.
-# النسخة المعتمدة في data/raw/ — احذف هذه بعد إغلاق Excel.
-/Final_Phishing_Dataset_96k.csv
-
 # ============ مخرجات التدريب ============
 models/*
 reports/figures/*
