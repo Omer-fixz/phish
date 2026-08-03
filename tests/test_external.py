@@ -20,6 +20,11 @@
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+
 import gzip                                # لفك ضغط ملف PhishTank
 import json                                # لقراءة ترتيب الخصائص
 import os                                  # للتعامل مع الملفات
@@ -27,15 +32,17 @@ import joblib                              # لتحميل النموذج
 import numpy as np
 import pandas as pd
 
-from feature_extractor import extract_features, get_domain
+from src.paths import (PHISHTANK_GZ, OPENPHISH_TXT, TRANCO_CSV, DATASET_CSV,
+                       MODEL_FILE, FEATURES_JSON)
+from src.feature_extractor import extract_features, get_domain
 
 # ---------------------------------------------------------
 # إعدادات
 # ---------------------------------------------------------
-PHISHTANK_FILE = "data/phishtank.csv.gz"   # تغذية PhishTank
-OPENPHISH_FILE = "data/openphish.txt"      # تغذية OpenPhish
-TRANCO_FILE = "data/top-1m.csv"            # قائمة المواقع الشهيرة
-TRAIN_FILE = "dataset_v2.csv"              # بيانات التدريب (لاستبعاد المكرر)
+PHISHTANK_FILE = PHISHTANK_GZ    # تغذية PhishTank
+OPENPHISH_FILE = OPENPHISH_TXT   # تغذية OpenPhish
+TRANCO_FILE = TRANCO_CSV         # قائمة المواقع الشهيرة
+TRAIN_FILE = DATASET_CSV         # بيانات التدريب (لاستبعاد المكرر)
 
 SAMPLE_PHISH = 3000                        # كم رابط تصيد نختبر
 LEGIT_FROM, LEGIT_TO = 200_000, 400_000    # شريحة تارانكو العميقة (خارج التدريب تماماً)
@@ -46,8 +53,8 @@ SEED = 42
 # =========================================================
 # 1. تحميل النموذج
 # =========================================================
-bundle = joblib.load("model.joblib")
-names = json.load(open("feature_names.json", encoding="utf-8"))
+bundle = joblib.load(MODEL_FILE)
+names = json.load(open(FEATURES_JSON, encoding="utf-8"))
 model, threshold = bundle["model"], bundle["threshold"]
 
 print("=" * 66)
@@ -70,7 +77,7 @@ def predict(urls):
 # =========================================================
 def load_phishtank():
     """يقرأ تغذية PhishTank ويأخذ الأحدث منها."""
-    if not os.path.exists(PHISHTANK_FILE):
+    if not PHISHTANK_FILE.exists():
         return pd.DataFrame()
     df = pd.read_csv(gzip.open(PHISHTANK_FILE), low_memory=False)
     df = df[df["verified"] == "yes"]                        # المؤكدة يدوياً فقط
@@ -85,7 +92,7 @@ def load_phishtank():
 
 def load_openphish():
     """يقرأ تغذية OpenPhish (نص عادي، رابط في كل سطر)."""
-    if not os.path.exists(OPENPHISH_FILE):
+    if not OPENPHISH_FILE.exists():
         return []
     with open(OPENPHISH_FILE, encoding="utf-8", errors="replace") as fh:
         urls = [ln.strip() for ln in fh if ln.strip().startswith("http")]

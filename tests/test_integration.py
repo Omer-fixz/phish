@@ -26,6 +26,11 @@
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+
 import json                                # لقراءة ترتيب الخصائص
 import joblib                              # لتحميل النموذج
 import numpy as np                         # للعمليات الرقمية
@@ -33,13 +38,14 @@ import pandas as pd                        # للجداول
 from sklearn.model_selection import GroupShuffleSplit   # لإعادة بناء نفس التقسيم
 from fastapi.testclient import TestClient  # لاستدعاء الـAPI بلا تشغيل خادم منفصل
 
-import main                                # تطبيق الـAPI نفسه
-from feature_extractor import extract_features
+from src.api import main                   # تطبيق الـAPI نفسه
+from src.paths import DATASET_CSV, MODEL_FILE, FEATURES_JSON
+from src.feature_extractor import extract_features
 
 # ---------------------------------------------------------
 # إعدادات
 # ---------------------------------------------------------
-DATA_FILE = "dataset_v2.csv"   # نفس الملف الذي دُرِّب عليه النموذج
+DATA_FILE = DATASET_CSV        # نفس الملف الذي دُرِّب عليه النموذج
 SAMPLE_SIZE = 1000             # عدد الروابط التي نمررها على المسارين
 # الـAPI يُرجع الاحتمال مقرَّباً إلى أربع خانات عشرية، فأدق فرق يمكن
 # ملاحظته بين المسارين هو نصف خانة أي 0.00005. نضع السماحية 0.0001
@@ -85,8 +91,8 @@ print("=" * 60)
 print("المرحلة 6 — اختبار التكامل بين التدريب والتشغيل")
 print("=" * 60)
 
-bundle = joblib.load("model.joblib")                      # النموذج المحفوظ
-names = json.load(open("feature_names.json", encoding="utf-8"))  # ترتيب الخصائص
+bundle = joblib.load(MODEL_FILE)                          # النموذج المحفوظ
+names = json.load(open(FEATURES_JSON, encoding="utf-8"))  # ترتيب الخصائص
 df = pd.read_csv(DATA_FILE, low_memory=False)             # البيانات
 
 # نعيد نفس خطوات التقسيم بنفس البذرة، فنحصل على نفس مجموعة الاختبار

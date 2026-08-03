@@ -9,29 +9,34 @@
 # ويصبح feature_extractor.py هو المصدر الوحيد للخصائص في المشروع كله.
 # =========================================================
 
-import sys                          # للتحكم في إعدادات بايثون
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # لعرض العربية في الشاشة بلا أخطاء
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+  # لعرض العربية في الشاشة بلا أخطاء
 
 import os                           # للتعامل مع الملفات والمسارات
 import time                         # لقياس الوقت المستغرق
 import pandas as pd                 # مكتبة الجداول
 
 # نستورد المستخرج الرسمي — ولا نكتب أي دالة استخراج هنا إطلاقاً
-from feature_extractor import FEATURE_NAMES, extract_features, get_domain
+from src.paths import SOURCE_CSV, DATASET_CSV, TRANCO_CSV, ensure_dirs
+from src.feature_extractor import FEATURE_NAMES, extract_features, get_domain
 
-SOURCE_FILE = "Final_Phishing_Dataset_96k.csv"   # الملف القديم (نأخذ منه عمودَي url و label فقط)
-OUTPUT_FILE = "dataset_v2.csv"                   # الملف الجديد الذي سيُعتمد في التدريب
+SOURCE_FILE = SOURCE_CSV                         # المصدر الأصلي في data/raw
+OUTPUT_FILE = DATASET_CSV                        # المخرَج في data/processed
 CHUNK_REPORT = 10000                             # كل كم رابط نطبع رسالة اطمئنان
 
 # --- إعدادات البيانات التكميلية (Tranco) ---------------------------------
-TRANCO_FILE = "data/top-1m.csv"   # قائمة تارانكو لأشهر المواقع (مصدر بحثي معتمد)
+TRANCO_FILE = TRANCO_CSV          # قائمة تارانكو لأشهر المواقع (مصدر بحثي معتمد)
 TRANCO_TOP_N = 60000              # من أي عمق في القائمة نسحب (كلما زاد قلّت شهرة الموقع)
 TRANCO_SAMPLE = 5000              # كم نطاقاً مجرداً نضيف فعلياً
 
 
 def load_raw_urls(path):
     """يقرأ الروابط الخام وتصنيفاتها فقط، ويتجاهل كل الخصائص القديمة."""
-    if not os.path.exists(path):                               # نتأكد أن الملف المصدر موجود
+    if not path.exists():                                      # نتأكد أن الملف المصدر موجود
         raise FileNotFoundError(f"لم يتم العثور على الملف: {path}")
 
     df = pd.read_csv(path, usecols=["url", "label"], low_memory=False)  # نقرأ عمودين فقط لتوفير الذاكرة
@@ -82,7 +87,7 @@ def add_bare_domains(df):
     المصدر: Tranco (tranco-list.eu) — قائمة بحثية مبنية على متوسط
     ترتيب المواقع عبر عدة مصادر، مصمَّمة لمقاومة التلاعب.
     """
-    if not os.path.exists(TRANCO_FILE):                        # القائمة اختيارية: لو غابت نكمل بدونها
+    if not TRANCO_FILE.exists():                               # القائمة اختيارية: لو غابت نكمل بدونها
         print(f"⚠️ لم تُوجد {TRANCO_FILE} — سيُبنى الملف بدون نطاقات مجردة.")
         return df
 
@@ -161,6 +166,7 @@ def main():
     print("المرحلة 0 — إعادة بناء البيانات بالمستخرج الرسمي")
     print("=" * 60)
 
+    ensure_dirs()                        # إنشاء مجلدات المخرجات إن لم توجد
     df = load_raw_urls(SOURCE_FILE)      # الخطوة 1: قراءة الروابط الخام
     df = add_bare_domains(df)            # الخطوة 2: إضافة نطاقات شرعية مجردة لسد فجوة البيانات
     out = build_features(df)             # الخطوة 3: استخراج الخصائص

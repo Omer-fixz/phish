@@ -4,7 +4,12 @@
 # =========================================================
 
 import sys                          # مكتبة للتحكم في إعدادات بايثون نفسه (سنستخدمها لضبط ترميز الشاشة)
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # نجبر الشاشة على ترميز UTF-8 حتى تظهر العربية بلا أخطاء
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+  # نجبر الشاشة على ترميز UTF-8 حتى تظهر العربية بلا أخطاء
 
 import os                          # مكتبة للتعامل مع المجلدات والملفات (سنستخدمها لإنشاء مجلد figures)
 import pandas as pd                # مكتبة الجداول: تقرأ ملف CSV وتتعامل معه كجدول ذكي
@@ -15,13 +20,14 @@ import matplotlib.pyplot as plt    # الواجهة العملية للرسم (�
 import seaborn as sns              # مكتبة رسم فوق matplotlib تعطي رسومات أجمل بسطر واحد
 
 # المستخرج الرسمي — نستورد منه دالة النطاق فقط، ولا نكتب منطق تفكيك موازياً
-from feature_extractor import get_domain
+from src.paths import DATASET_CSV, FIGURES_DIR, TABLES_DIR, ensure_dirs
+from src.feature_extractor import get_domain
 
 # ---------------------------------------------------------
 # إعدادات عامة ثابتة في مكان واحد حتى يسهل تعديلها لاحقاً
 # ---------------------------------------------------------
-DATA_FILE = "dataset_v2.csv"                   # الملف المبني بـ feature_extractor.py (وليس الملف القديم)
-FIG_DIR = "figures"                            # اسم المجلد الذي ستُحفظ فيه كل الرسومات
+DATA_FILE = DATASET_CSV                        # الملف المبني بـ feature_extractor.py
+FIG_DIR = FIGURES_DIR                          # مجلد الرسومات في reports/
 DPI = 300                                      # دقة الصورة المطلوبة للرسالة الجامعية (300 نقطة/إنش)
 
 sns.set_theme(style="whitegrid")               # اختيار شكل موحّد للرسومات: خلفية بيضاء بخطوط شبكة خفيفة
@@ -32,7 +38,7 @@ sns.set_theme(style="whitegrid")               # اختيار شكل موحّد 
 # =========================================================
 def load_data(path):
     """تقرأ ملف البيانات وتتأكد أنه موجود وأن أعمدته الأساسية سليمة."""
-    if not os.path.exists(path):                                  # نتحقق أولاً أن الملف موجود فعلاً
+    if not path.exists():                                         # نتحقق أولاً أن الملف موجود فعلاً
         raise FileNotFoundError(f"لم يتم العثور على الملف: {path}")  # إذا لم يوجد نوقف البرنامج برسالة واضحة
 
     df = pd.read_csv(path, low_memory=False)                      # قراءة الملف كاملاً وتحويله إلى جدول
@@ -94,8 +100,9 @@ def describe_features(df):
     numeric = df.drop(columns=["url", "domain", "label"])     # نستبعد الأعمدة النصية والهدف، ونبقي الخصائص فقط
 
     desc = numeric.describe().T                               # جدول الإحصاء: العدد والمتوسط والانحراف والحدود
-    desc.to_csv(os.path.join(FIG_DIR, "descriptive_stats.csv"))  # حفظه كملف لسهولة نسخه في الرسالة
-    print("\n📄 تم حفظ الإحصاءات الوصفية في figures/descriptive_stats.csv")
+    out = TABLES_DIR / "descriptive_stats.csv"               # الجداول منفصلة عن الرسومات
+    desc.to_csv(out)                                         # حفظه كملف لسهولة نسخه في الرسالة
+    print(f"\n📄 تم حفظ الإحصاءات الوصفية في {out}")
 
     dead = [c for c in numeric.columns if numeric[c].nunique() <= 1]  # خاصية بقيمة واحدة فقط = خاصية ميتة
     print("\n🪦 الخصائص الميتة (قيمة ثابتة في كل الصفوف):")
@@ -243,7 +250,7 @@ def main():
     print("المرحلة 1 — التحليل الاستكشافي للبيانات")
     print("=" * 60)
 
-    os.makedirs(FIG_DIR, exist_ok=True)                       # إنشاء مجلد figures إذا لم يكن موجوداً
+    ensure_dirs()                                             # إنشاء مجلدات المخرجات إن لم توجد
 
     df = load_data(DATA_FILE)                                 # الخطوة 1: قراءة البيانات
     df = ensure_domain_column(df)                             # الخطوة 2: التأكد من عمود النطاق

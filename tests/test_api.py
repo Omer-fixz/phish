@@ -7,8 +7,13 @@
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+
 from fastapi.testclient import TestClient
-from main import app, THRESHOLD
+from src.api.main import app, THRESHOLD
 
 client = TestClient(app)          # عميل وهمي يتحدث مع التطبيق مباشرة
 passed = failed = 0
@@ -92,9 +97,10 @@ print("\n=== 6. الاتساق مع سكربت التدريب ===")
 # نفس الرابط يجب أن يعطي نفس المتجه في الـAPI وفي الاستخراج المباشر
 import json as _json
 import numpy as np
-from feature_extractor import extract_features
+from src.feature_extractor import extract_features
 
-names = _json.load(open("feature_names.json", encoding="utf-8"))
+from src.paths import FEATURES_JSON
+names = _json.load(open(FEATURES_JSON, encoding="utf-8"))
 u = "paypal.secure-login.tk/verify?id=99"
 direct = [float(extract_features(u)[n]) for n in names]           # الاستخراج المباشر
 api_val = {f["name"]: f["value"] for f in
@@ -122,7 +128,7 @@ check(f"رابط فيه وسم HTML يُعالَج كنص (كود {r.status_code
 
 
 print("\n=== 8. التأمين (المرحلة 5) ===")
-import main                                        # للوصول إلى عدّاد الطلبات وإعداداته
+from src.api import main                           # للوصول إلى عدّاد الطلبات وإعداداته
 
 r = client.post("/predict", json={"url": "google.com"})
 h = r.headers

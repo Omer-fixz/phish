@@ -8,8 +8,12 @@
 #   4. يحفظ النموذج مع أسماء الخصائص بترتيبها الثابت
 # =========================================================
 
-import sys                          # للتحكم في إعدادات بايثون
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # لعرض العربية في الشاشة بلا أخطاء
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+  # لعرض العربية في الشاشة بلا أخطاء
 
 import os                           # للتعامل مع المجلدات
 import json                         # لحفظ أسماء الخصائص في ملف JSON
@@ -22,6 +26,9 @@ import matplotlib                   # مكتبة الرسم
 matplotlib.use("Agg")               # الرسم في ملفات فقط بدون فتح نوافذ
 import matplotlib.pyplot as plt     # واجهة الرسم
 import seaborn as sns               # رسومات أجمل
+
+from src.paths import (DATASET_CSV, MODEL_FILE, FEATURES_JSON, FIGURES_DIR,
+                       TABLES_DIR, ensure_dirs)
 
 from sklearn.model_selection import GroupShuffleSplit, train_test_split  # أدوات التقسيم
 from sklearn.preprocessing import StandardScaler                          # التطبيع للنماذج الخطية
@@ -36,10 +43,10 @@ from sklearn.metrics import (accuracy_score, precision_score, recall_score,
 # ---------------------------------------------------------
 # إعدادات عامة في مكان واحد
 # ---------------------------------------------------------
-DATA_FILE = "dataset_v2.csv"      # ملف البيانات المبني بالمستخرج الرسمي
-FIG_DIR = "figures"               # مجلد الرسومات
-MODEL_FILE = "model.joblib"       # اسم ملف النموذج النهائي (اسم محايد لأن الفائز قد يكون أي نموذج)
-FEATURES_FILE = "feature_names.json"  # ملف أسماء الخصائص بترتيبها
+DATA_FILE = DATASET_CSV           # ملف البيانات المبني بالمستخرج الرسمي
+FIG_DIR = FIGURES_DIR             # مجلد الرسومات
+MODEL_PATH = MODEL_FILE           # مسار النموذج النهائي (اسم محايد لأن الفائز قد يكون أي نموذج)
+FEATURES_FILE = FEATURES_JSON     # ملف أسماء الخصائص بترتيبها
 SEED = 42                         # رقم ثابت ليتكرر نفس التقسيم في كل تشغيل
 LEAKAGE_LIMIT = 0.97              # أي دقة أعلى من هذا تعني تسريباً وليس نجاحاً
 MAX_FPR = 0.10                    # أقصى نسبة إنذارات كاذبة مقبولة عند اختيار العتبة
@@ -226,9 +233,9 @@ def comparison_table(best_per_family):
     table = pd.DataFrame(rows).sort_values("F1", ascending=False)  # ترتيب تنازلي حسب F1
     print("\n📊 جدول المقارنة (على مجموعة التحقق):")
     print(table.to_string(index=False))
-    table.to_csv(os.path.join(FIG_DIR, "model_comparison.csv"), index=False,
-                 encoding="utf-8-sig")                          # utf-8-sig ليفتح صحيحاً في إكسل
-    print(f"   💾 حُفظ الجدول في {FIG_DIR}/model_comparison.csv")
+    out = TABLES_DIR / "model_comparison.csv"                      # الجداول منفصلة عن الرسومات
+    table.to_csv(out, index=False, encoding="utf-8-sig")           # utf-8-sig ليفتح صحيحاً في إكسل
+    print(f"   💾 حُفظ الجدول في {out}")
 
     # رسم بياني يقارن F1 بين النماذج الأربعة
     plt.figure(figsize=(8, 4.5))
@@ -372,7 +379,7 @@ def final_test(winner, parts, scaler, X_columns, threshold):
         plt.xlabel("Importance")
         save_fig("09_feature_importance.png")
 
-        imp.to_csv(os.path.join(FIG_DIR, "feature_importance.csv"),
+        imp.to_csv(TABLES_DIR / "feature_importance.csv",
                    header=["importance"], encoding="utf-8-sig")  # حفظ الترتيب كاملاً
 
     return m
@@ -413,8 +420,8 @@ def save_model(winner, scaler, X_columns, test_metrics, threshold):
         "test_metrics": {k: float(v) for k, v in test_metrics.items()
                          if not k.startswith("_")},              # نتائجه على الاختبار
     }
-    joblib.dump(bundle, MODEL_FILE)                              # الحفظ في ملف واحد
-    print(f"\n💾 حُفظ النموذج: {MODEL_FILE}")
+    joblib.dump(bundle, MODEL_PATH)                              # الحفظ في ملف واحد
+    print(f"\n💾 حُفظ النموذج: {MODEL_PATH}")
 
     with open(FEATURES_FILE, "w", encoding="utf-8") as fh:       # ملف منفصل لأسماء الخصائص
         json.dump(list(X_columns), fh, ensure_ascii=False, indent=2)
@@ -427,7 +434,7 @@ def save_model(winner, scaler, X_columns, test_metrics, threshold):
 # =========================================================
 def save_fig(filename):
     """تحفظ الرسمة الحالية بدقة 300 ثم تغلقها."""
-    path = os.path.join(FIG_DIR, filename)                       # المسار الكامل
+    path = FIG_DIR / filename                                    # المسار الكامل
     plt.tight_layout()                                           # ترتيب العناصر تلقائياً
     plt.savefig(path, dpi=300, bbox_inches="tight")              # الحفظ بدقة عالية
     plt.close()                                                  # تحرير الذاكرة
@@ -441,7 +448,7 @@ def main():
     print("=" * 60)
     print("المرحلة 2 — التدريب والمقارنة")
     print("=" * 60)
-    os.makedirs(FIG_DIR, exist_ok=True)                          # إنشاء مجلد الرسومات إن لم يوجد
+    ensure_dirs()                                                # إنشاء مجلدات المخرجات إن لم توجد
 
     X, y, groups = load_data()                                   # 1. تحميل البيانات
 
@@ -473,6 +480,6 @@ if __name__ == "__main__":
     try:
         main()
     except FileNotFoundError as e:
-        print(f"❌ ملف مفقود: {e}. شغّل 00_build_dataset.py أولاً.")
+        print(f"❌ ملف مفقود: {e}. شغّل scripts/01_build_dataset.py أولاً.")
     except Exception as e:
         print(f"❌ حدث خطأ غير متوقع: {e}")

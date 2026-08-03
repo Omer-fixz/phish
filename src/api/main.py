@@ -30,14 +30,16 @@ from fastapi.responses import JSONResponse, HTMLResponse  # للتحكم في ش
 from pydantic import BaseModel, Field, field_validator  # للتحقق من صحة المدخلات
 
 # المستخرج الرسمي — نفسه المستخدم في التدريب، وهذا شرط صحة النتائج
-from feature_extractor import extract_features, FEATURE_NAMES
+from src.paths import MODEL_FILE, FEATURES_JSON, INDEX_HTML
+from src.feature_extractor import extract_features, FEATURE_NAMES
 
 # ---------------------------------------------------------
 # إعدادات
 # ---------------------------------------------------------
-MODEL_FILE = "model.joblib"           # ملف النموذج المحفوظ من المرحلة 2
-FEATURES_FILE = "feature_names.json"  # ترتيب الخصائص المعتمد
-INDEX_FILE = "index.html"             # صفحة الواجهة التي يقدّمها الخادم
+# المسارات تأتي من src/paths.py فيعمل الخادم من أي مجلد
+MODEL_PATH = MODEL_FILE               # ملف النموذج المحفوظ من المرحلة 2
+FEATURES_FILE = FEATURES_JSON         # ترتيب الخصائص المعتمد
+INDEX_FILE = INDEX_HTML               # صفحة الواجهة التي يقدّمها الخادم
 DEFAULT_THRESHOLD = 0.5               # تُستخدم فقط لو كان النموذج قديماً بلا عتبة محفوظة
 MAX_URL_LENGTH = 2000                 # أقصى طول مقبول للرابط (حماية من المدخلات الضخمة)
 TOP_K = 3                             # عدد الخصائص المفسِّرة التي نُرجعها
@@ -61,10 +63,10 @@ log = logging.getLogger("phishing-api")
 # نحمّله هنا لا داخل الدالة، لأن تحميله مع كل طلب يجعل الاستجابة بطيئة جداً.
 def load_bundle():
     """يحمّل النموذج وأسماء الخصائص ويتأكد من تطابقهما."""
-    if not os.path.exists(MODEL_FILE):                       # النموذج غير موجود
-        raise RuntimeError(f"{MODEL_FILE} غير موجود — شغّل train_model.py أولاً")
+    if not MODEL_PATH.exists():                              # النموذج غير موجود
+        raise RuntimeError(f"{MODEL_PATH} غير موجود — شغّل scripts/04_train_model.py أولاً")
 
-    bundle = joblib.load(MODEL_FILE)                         # تحميل الحزمة المحفوظة
+    bundle = joblib.load(MODEL_PATH)                         # تحميل الحزمة المحفوظة
 
     with open(FEATURES_FILE, encoding="utf-8") as fh:        # قراءة ترتيب الخصائص
         names = json.load(fh)
@@ -283,7 +285,7 @@ def home():
     (file://) لمنع المتصفح طلباته إلى الـAPI بسبب سياسة المصدر الواحد.
     تقديمها من هنا يجعل الصفحة والـAPI على نفس المصدر فلا حاجة لـ CORS.
     """
-    if not os.path.exists(INDEX_FILE):                       # الواجهة غير موجودة
+    if not INDEX_FILE.exists():                              # الواجهة غير موجودة
         raise HTTPException(status_code=404, detail="index.html غير موجود")
     with open(INDEX_FILE, encoding="utf-8") as fh:           # قراءة الصفحة
         return HTMLResponse(fh.read())

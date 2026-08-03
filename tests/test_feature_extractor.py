@@ -14,7 +14,11 @@ test_feature_extractor.py
 
 import sys
 
-from feature_extractor import (
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from src.feature_extractor import (
     FEATURE_NAMES,
     extract_features,
     extract_features_batch,

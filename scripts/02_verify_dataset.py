@@ -10,12 +10,18 @@
 # =========================================================
 
 import sys
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")   # لعرض العربية بلا أخطاء
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+import sys, pathlib
+# نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+   # لعرض العربية بلا أخطاء
 
 import pandas as pd                                          # مكتبة الجداول
-from feature_extractor import FEATURE_NAMES, extract_features, get_domain
+from src.paths import DATASET_CSV
+from src.feature_extractor import FEATURE_NAMES, extract_features, get_domain
 
-DATA_FILE = "dataset_v2.csv"   # الملف المراد فحصه
+DATA_FILE = DATASET_CSV        # الملف المراد فحصه
 SAMPLE_SIZE = 2000             # عدد الروابط التي نفحصها (عينة تكفي لكشف أي اختلاف)
 TOLERANCE = 1e-6               # فرق مسموح به بسبب تقريب الأرقام العشرية فقط
 
@@ -50,7 +56,7 @@ def main():
         print(f"   - {col}: {n} صف مختلف من {len(sample)}")
     if dom_mismatch:
         print(f"   - domain: {dom_mismatch} صف مختلف")
-    print("   ➜ الحل: إعادة تشغيل 00_build_dataset.py لبناء الملف من جديد.")
+    print("   ➜ الحل: إعادة تشغيل scripts/01_build_dataset.py لبناء الملف من جديد.")
     sys.exit(1)
 
 
@@ -58,5 +64,5 @@ if __name__ == "__main__":
     try:
         main()
     except FileNotFoundError:
-        print(f"❌ لم يتم العثور على {DATA_FILE}. شغّل 00_build_dataset.py أولاً.")
+        print(f"❌ لم يتم العثور على {DATA_FILE}. شغّل scripts/01_build_dataset.py أولاً.")
         sys.exit(1)
