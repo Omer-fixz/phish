@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<!-- =========================================================
+     المرحلة 4 — واجهة المستخدم
+     =========================================================
+     صفحة واحدة فيها حقل إدخال وزر فحص. النتيجة تظهر بلا إعادة
+     تحميل الصفحة، عبر Fetch API الذي يتحدث مع مسار /predict.
+
+     قاعدتان أمنيتان في هذه الصفحة:
+       1. الرابط المفحوص يُعرض كنص خام عبر textContent، ولا يُدرج
+          أبداً بـ innerHTML. لو أدرجناه كـ HTML لأمكن لرابط خبيث
+          أن يحقن كوداً يعمل داخل صفحتنا (ثغرة XSS).
+       2. الرابط لا يُحوَّل إلى وسم <a> قابل للنقر. الصفحة أداة فحص
+          لا بوابة زيارة، وجعله قابلاً للنقر يجعلنا نساعد المستخدم
+          على الوقوع في الفخ الذي جاء يتجنبه.
+     ========================================================= -->
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام كشف روابط التصيد الاحتيالي</title>
+
+  <!-- Tailwind عبر CDN: إطار تنسيق يعطي أصنافاً جاهزة بدل كتابة CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* خط عربي واضح للقراءة */
+    body { font-family: "Segoe UI", Tahoma, sans-serif; }
+    /* الرابط المعروض قد يكون طويلاً جداً، فنجبره على النزول لسطر جديد */
+    .break-url { word-break: break-all; }
+  </style>
+</head>
+
+<body class="bg-slate-100 min-h-screen py-10 px-4">
+
+  <div class="max-w-2xl mx-auto">
+
+    <!-- ===== العنوان ===== -->
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-slate-800">🛡️ كاشف روابط التصيد الاحتيالي</h1>
+      <p class="text-slate-600 mt-2">
+        فحص فوري للرابط بتحليل نصّه فقط — لا يُفتح الموقع ولا يُنزَّل محتواه
+      </p>
+    </header>
+
+    <!-- ===== بطاقة الإدخال ===== -->
+    <div class="bg-white rounded-xl shadow p-6">
+      <label for="urlInput" class="block text-slate-700 font-semibold mb-2">
+        الصق الرابط المراد فحصه
+      </label>
+
+      <div class="flex gap-2">
+        <!-- حقل النص: نوعه text لا url حتى يقبل الروابط بدون بروتوكول -->
+        <input id="urlInput" type="text" maxlength="2000" dir="ltr"
+               placeholder="example.com/login"
+               class="flex-1 border border-slate-300 rounded-lg px-4 py-2
+                      focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+        <!-- زر الفحص -->
+        <button id="checkBtn"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-semibold
+                       px-6 py-2 rounded-lg transition disabled:opacity-50">
+          فحص
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-500 mt-2">
+        اضغط Enter أيضاً للفحص. لن يُفتح الرابط في أي حال.
+      </p>
+    </div>
+
+    <!-- ===== منطقة النتيجة (مخفية حتى يصل رد) ===== -->
+    <div id="result" class="hidden mt-6 rounded-xl shadow overflow-hidden bg-white">
+
+      <!-- الشريط الملوّن: أخضر للآمن وأحمر للتصيد -->
+      <div id="banner" class="p-5 text-white">
+        <div class="text-2xl font-bold" id="verdict"></div>
+        <div class="text-sm opacity-90 mt-1" id="confidence"></div>
+      </div>
+
+      <div class="p-5">
+        <!-- الرابط المفحوص كنص خام غير قابل للنقر -->
+        <div class="mb-4">
+          <div class="text-xs text-slate-500 mb-1">الرابط المفحوص (نص فقط، غير قابل للنقر):</div>
+          <div id="shownUrl" dir="ltr"
+               class="break-url bg-slate-100 rounded p-3 text-sm text-slate-800 font-mono"></div>
+        </div>
+
+        <!-- أسباب القرار -->
+        <div class="text-xs text-slate-500 mb-2">أهم ما بُني عليه القرار:</div>
+        <ul id="reasons" class="space-y-2"></ul>
+
+        <!-- شريط الاحتمال -->
+        <div class="mt-5">
+          <div class="flex justify-between text-xs text-slate-500 mb-1">
+            <span>احتمال أن يكون تصيداً</span>
+            <span id="probText"></span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-2">
+            <div id="probBar" class="h-2 rounded-full transition-all"></div>
+          </div>
+          <div class="text-xs text-slate-400 mt-1" id="thresholdText"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== منطقة الخطأ ===== -->
+    <div id="error" class="hidden mt-6 bg-amber-50 border border-amber-300
+                           text-amber-800 rounded-xl p-4"></div>
+
+    <footer class="text-center text-xs text-slate-400 mt-10">
+      مشروع تخرج — نظام كشف روابط التصيد الاحتيالي بتعلم الآلة
+    </footer>
+  </div>
+
+
+<script>
+// =========================================================
+// ترجمة أسماء الخصائص إلى عربية مفهومة للمستخدم العادي
+// =========================================================
+// النموذج يُرجع أسماء إنجليزية تقنية مثل suspicious_keyword_count،
+// والمستخدم العادي لا يفهمها، فنترجمها هنا للعرض فقط.
+const FEATURE_LABELS = {
+  url_length: "طول الرابط",
+  hostname_length: "طول اسم الموقع",
+  path_length: "طول المسار",
+  query_length: "طول الاستعلام",
+  tld_length: "طول امتداد النطاق",
+  count_dot: "عدد النقاط",
+  count_hyphen: "عدد الشرطات",
+  count_underscore: "عدد الشرطات السفلية",
+  count_slash: "عدد الشرطات المائلة",
+  count_question: "عدد علامات الاستفهام",
+  count_equal: "عدد علامات التساوي",
+  count_at: "عدد رموز @",
+  count_ampersand: "عدد رموز &",
+  count_percent: "عدد رموز %",
+  count_digits: "عدد الأرقام",
+  count_special_chars: "عدد الرموز الخاصة",
+  digit_ratio: "نسبة الأرقام",
+  letter_ratio: "نسبة الحروف",
+  special_char_ratio: "نسبة الرموز الخاصة",
+  digit_ratio_in_host: "نسبة الأرقام في اسم الموقع",
+  has_at_symbol: "وجود رمز @ (يخفي الوجهة الحقيقية)",
+  has_double_slash_in_path: "شرطتان مائلتان في المسار",
+  is_shortened_url: "خدمة اختصار روابط",
+  has_non_standard_port: "منفذ غير قياسي",
+  is_punycode: "ترميز punycode (تشابه بصري)",
+  https_token_in_domain: "كلمة https داخل اسم النطاق",
+  has_hex_encoding: "ترميز سداسي يخفي كلمات",
+  subdomain_count: "عدد النطاقات الفرعية",
+  path_depth: "عمق المسار",
+  longest_word_length: "طول أطول كلمة",
+  suspicious_keyword_count: "عدد الكلمات المشبوهة (login، verify…)",
+  brand_in_wrong_place: "علامة تجارية في مكان خاطئ (انتحال)",
+  has_suspicious_tld: "امتداد نطاق مشبوه",
+  entropy_url: "عشوائية الرابط",
+  entropy_domain: "عشوائية اسم النطاق",
+};
+
+// اختصارات للوصول إلى عناصر الصفحة
+const $ = (id) => document.getElementById(id);
+const input = $("urlInput"), btn = $("checkBtn");
+const resultBox = $("result"), errorBox = $("error");
+
+
+// =========================================================
+// الدالة الرئيسية: إرسال الرابط للخادم وعرض النتيجة
+// =========================================================
+async function checkUrl() {
+  const url = input.value.trim();          // قراءة ما كتبه المستخدم وتنظيف المسافات
+
+  resultBox.classList.add("hidden");       // إخفاء أي نتيجة سابقة
+  errorBox.classList.add("hidden");        // إخفاء أي خطأ سابق
+
+  if (!url) {                              // الحقل فارغ
+    showError("الرجاء إدخال رابط أولاً.");
+    return;
+  }
+
+  btn.disabled = true;                     // تعطيل الزر لمنع الضغط المتكرر
+  btn.textContent = "جاري الفحص...";       // إشعار المستخدم أن العملية جارية
+
+  try {
+    // إرسال الطلب إلى الخادم. الصفحة والـAPI على نفس المصدر فلا حاجة لأي إعداد إضافي.
+    const res = await fetch("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: url }),  // تحويل الرابط إلى JSON
+    });
+
+    const data = await res.json();         // قراءة الرد وتحويله من JSON
+
+    if (!res.ok) {                         // الخادم رفض الطلب (رابط غير صالح مثلاً)
+      showError(data.detail || "تعذّر فحص هذا الرابط.");
+      return;
+    }
+
+    showResult(data, url);                 // كل شيء تمام: نعرض النتيجة
+
+  } catch (e) {                            // الخادم متوقف أو انقطع الاتصال
+    showError("تعذّر الاتصال بالخادم. تأكد أن الخادم يعمل عبر: python main.py");
+  } finally {
+    btn.disabled = false;                  // إعادة تفعيل الزر في كل الأحوال
+    btn.textContent = "فحص";               // إعادة نص الزر الأصلي
+  }
+}
+
+
+// =========================================================
+// عرض النتيجة على الشاشة
+// =========================================================
+function showResult(data, originalUrl) {
+  const isPhishing = data.label === 1;                    // هل الحكم تصيد؟
+  const pct = (v) => (v * 100).toFixed(1) + "%";          // تحويل النسبة إلى شكل مئوي
+
+  // ---- الشريط العلوي: لونه ونصه حسب الحكم ----
+  $("banner").className = "p-5 text-white " +
+    (isPhishing ? "bg-red-600" : "bg-green-600");         // أحمر للتصيد وأخضر للآمن
+  $("verdict").textContent = isPhishing
+    ? "⚠️ رابط تصيد احتيالي — لا تفتحه"
+    : "✅ رابط يبدو آمناً";
+  $("confidence").textContent = "درجة الثقة في هذا الحكم: " + pct(data.confidence);
+
+  // ---- الرابط: نستخدم textContent لا innerHTML ----
+  // هذه السطر تحديداً هو ما يمنع ثغرة XSS: أي وسم HTML داخل الرابط
+  // سيظهر كنص عادي ولن يُنفَّذ. ولا نضعه داخل <a> إطلاقاً.
+  $("shownUrl").textContent = originalUrl;
+
+  // ---- الأسباب: أهم ثلاث خصائص ----
+  const list = $("reasons");
+  list.innerHTML = "";                                    // تفريغ القائمة السابقة
+  data.top_features.forEach((f) => {
+    const towardPhishing = f.contribution > 0;            // هل دفعت نحو التصيد؟
+    const li = document.createElement("li");              // إنشاء عنصر قائمة جديد
+    li.className = "flex items-start gap-2 text-sm border rounded-lg p-2 " +
+      (towardPhishing ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200");
+
+    const icon = document.createElement("span");          // أيقونة الاتجاه
+    icon.textContent = towardPhishing ? "🔺" : "🔻";
+
+    const body = document.createElement("div");           // نص السبب
+    const title = document.createElement("div");
+    title.className = "font-semibold text-slate-800";
+    // اسم عربي إن وُجد، وإلا الاسم التقني كما هو
+    title.textContent = FEATURE_LABELS[f.name] || f.name;
+
+    const detail = document.createElement("div");
+    detail.className = "text-slate-600 text-xs mt-0.5";
+    detail.textContent = "القيمة: " + f.value + " — " + f.direction;
+
+    body.appendChild(title);
+    body.appendChild(detail);
+    li.appendChild(icon);
+    li.appendChild(body);
+    list.appendChild(li);                                 // إضافة السبب إلى القائمة
+  });
+
+  // ---- شريط الاحتمال ----
+  const prob = data.phishing_probability;                 // احتمال التصيد
+  $("probText").textContent = pct(prob);
+  const bar = $("probBar");
+  bar.style.width = (prob * 100) + "%";                   // عرض الشريط يعكس الاحتمال
+  bar.className = "h-2 rounded-full transition-all " +
+    (isPhishing ? "bg-red-500" : "bg-green-500");
+  $("thresholdText").textContent =
+    "عتبة القرار المعتمدة: " + data.threshold +
+    " (اختيرت أثناء التدريب لترجيح كشف الهجمات على تقليل الإنذارات الكاذبة)";
+
+  resultBox.classList.remove("hidden");                   // إظهار بطاقة النتيجة
+}
+
+
+// =========================================================
+// عرض رسالة خطأ
+// =========================================================
+function showError(msg) {
+  errorBox.textContent = msg;                             // نص فقط، لا HTML
+  errorBox.classList.remove("hidden");                    // إظهار صندوق الخطأ
+}
+
+
+// =========================================================
+// ربط الأحداث
+// =========================================================
+btn.addEventListener("click", checkUrl);                  // الضغط على زر الفحص
+input.addEventListener("keydown", (e) => {                // الضغط على Enter داخل الحقل
+  if (e.key === "Enter") checkUrl();
+});
+</script>
+
+</body>
+</html>

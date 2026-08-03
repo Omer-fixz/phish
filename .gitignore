@@ -1,0 +1,28 @@
+# البيانات الخارجية المنزَّلة (31 ميجابايت) — تُنزَّل بالسكربتات ولا تُرفع
+data/
+
+# البيانات المُولَّدة ومخرجات التدريب
+dataset_v2.csv
+model.joblib
+feature_names.json
+figures/
+
+# ملف المصدر الأصلي الكبير
+Final_Phishing_Dataset_96k.csv
+
+# بايثون
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# أسرار — لا تُرفع أبداً
+.env
+*.key
+
+# نظام التشغيل والمحررات
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
