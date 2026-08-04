@@ -1,0 +1,21 @@
+# .vercelignore
+.git
+.venv
+.pytest_cache
+data
+data/
+data/*
+reports
+reports/
+reports/*
+tests
+tests/
+scripts
+scripts/
+archive
+archive/
+*.csv
+*.zip
+*.gz
+Final_Phishing_Dataset_96k.csv
+top-1m.csv
