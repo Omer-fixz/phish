@@ -1,11 +1,7 @@
-pandas
-numpy
-matplotlib
-seaborn
-tldextract
-scikit-learn
-xgboost
-joblib
 fastapi
 uvicorn
 pydantic
+numpy
+scikit-learn
+xgboost
+joblib
