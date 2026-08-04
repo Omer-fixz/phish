@@ -5,7 +5,7 @@
       "src": "src/api/main.py",
       "use": "@vercel/python",
       "config": {
-        "requirements": "requirements-api.txt"
+        "excludeFiles": "{data/**,reports/**,scripts/**,tests/**,archive/**,data/raw/**,data/processed/**,*.csv,*.zip,*.gz}"
       }
     }
   ],
