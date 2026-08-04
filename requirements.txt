@@ -3,6 +3,6 @@ uvicorn
 pydantic
 numpy<2.0.0
 scikit-learn<1.4.0
-xgboost==1.7.6
+xgboost==1.6.2
 tldextract
 joblib
