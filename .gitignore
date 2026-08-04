@@ -9,7 +9,10 @@ data/raw/*
 data/processed/*
 
 # ============ مخرجات التدريب ============
+# models/model.joblib و feature_names.json مرفوعان للسماح بالنشر على Railway
 models/*
+!models/model.joblib
+!models/feature_names.json
 reports/figures/*
 reports/tables/*
 
