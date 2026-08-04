@@ -33,6 +33,9 @@ from __future__ import annotations
 import ipaddress
 import math
 import re
+import socket
+import ssl
+import datetime
 from collections import Counter
 from urllib.parse import urlparse, unquote
 
@@ -90,6 +93,94 @@ SUSPICIOUS_TLDS = {
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 # نمط الترميز السداسي عشري في الروابط مثل %20 %2F
 _HEX_RE = re.compile(r"%[0-9a-fA-F]{2}")
+
+# مهلة الاتصال بالشبكة (ثوانٍ) — قصيرة لضمان استجابة سريعة للـ API
+_NET_TIMEOUT = 5
+
+
+# ---------------------------------------------------------------------------
+# دوال فحص الشبكة (Domain Age / WHOIS / SSL)
+# ---------------------------------------------------------------------------
+
+def _get_domain_age_days(hostname: str) -> int:
+    """
+    يحسب عمر النطاق بالأيام من تاريخ التسجيل حتى اليوم عبر WHOIS.
+
+    المواقع الشرعية عادةً مسجَّلة منذ سنوات.
+    مواقع التصيد كثيراً ما تُنشأ وتُستخدم خلال أيام أو أسابيع.
+    القيمة -1 تعني تعذّر الحصول على المعلومة (موقع غير موجود، WHOIS محجوب...).
+    """
+    try:
+        import whois  # python-whois
+        w = whois.whois(hostname)
+        creation = w.creation_date
+        if creation is None:
+            return -1
+        # بعض المكتبات تُرجع قائمة بدل تاريخ واحد
+        if isinstance(creation, list):
+            creation = creation[0]
+        if not isinstance(creation, datetime.datetime):
+            return -1
+        delta = datetime.datetime.utcnow() - creation
+        return max(delta.days, 0)
+    except Exception:
+        return -1
+
+
+def _get_ssl_info(hostname: str) -> dict:
+    """
+    يتصل بالموقع على المنفذ 443 ويستخرج معلومات شهادة SSL/TLS.
+
+    المخرجات (dict):
+        ssl_valid        : 1 إن كانت الشهادة موجودة وصالحة الآن، 0 في غير ذلك
+        ssl_days_left    : أيام المتبقية لانتهاء الشهادة (-1 إن تعذّر)
+        ssl_self_signed  : 1 إن كانت الشهادة موقّعة ذاتياً (Self-Signed)
+        ssl_wildcard     : 1 إن كانت شهادة بدل (*) — أحياناً مؤشر مشبوه
+    """
+    result = {
+        "ssl_valid": 0,
+        "ssl_days_left": -1,
+        "ssl_self_signed": 0,
+        "ssl_wildcard": 0,
+    }
+    if not hostname:
+        return result
+    try:
+        ctx = ssl.create_default_context()
+        conn = ctx.wrap_socket(
+            socket.create_connection((hostname, 443), timeout=_NET_TIMEOUT),
+            server_hostname=hostname,
+        )
+        cert = conn.getpeercert()
+        conn.close()
+
+        # تاريخ الانتهاء
+        not_after = cert.get("notAfter", "")
+        if not_after:
+            exp = datetime.datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+            days_left = (exp - datetime.datetime.utcnow()).days
+            result["ssl_valid"] = int(days_left > 0)
+            result["ssl_days_left"] = days_left
+
+        # شهادة ذاتية: المُصدِر هو نفسه الموضوع
+        issuer = dict(x[0] for x in cert.get("issuer", []))
+        subject = dict(x[0] for x in cert.get("subject", []))
+        result["ssl_self_signed"] = int(
+            issuer.get("commonName", "A") == subject.get("commonName", "B")
+        )
+
+        # شهادة بدل (Wildcard)
+        san = cert.get("subjectAltName", [])
+        result["ssl_wildcard"] = int(
+            any(v.startswith("*.") for _, v in san)
+        )
+
+    except ssl.SSLCertVerificationError:
+        # شهادة غير موثوقة أو منتهية — هذا بحد ذاته مؤشر
+        result["ssl_valid"] = 0
+    except Exception:
+        pass  # موقع لا يدعم HTTPS أو غير متاح
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +282,12 @@ FEATURE_NAMES = [
     # -- المجموعة 7: خصائص إحصائية --------------------------------------
     "entropy_url",
     "entropy_domain",
+    # -- المجموعة 8: خصائص الشبكة (Domain / WHOIS / SSL) ----------------
+    "domain_age_days",
+    "ssl_valid",
+    "ssl_days_left",
+    "ssl_self_signed",
+    "ssl_wildcard",
 ]
 
 
@@ -349,6 +446,19 @@ def extract_features(url: str) -> dict:
     # ---- المجموعة 7: خصائص إحصائية -------------------------------------
     f["entropy_url"] = round(_shannon_entropy(raw), 6)
     f["entropy_domain"] = round(_shannon_entropy(domain), 6)
+
+    # ---- المجموعة 8: خصائص الشبكة (Domain Age / WHOIS / SSL) ----------
+    # ملاحظة: هذه الخصائص تتطلب اتصالاً بالإنترنت وتستغرق ثوانٍ.
+    # تُعطى قيمة افتراضية آمنة (-1 / 0) إن تعذّر الاتصال.
+    f["domain_age_days"] = _get_domain_age_days(hostname) if hostname else -1
+    ssl_info = _get_ssl_info(hostname) if hostname else {
+        "ssl_valid": 0, "ssl_days_left": -1,
+        "ssl_self_signed": 0, "ssl_wildcard": 0,
+    }
+    f["ssl_valid"] = ssl_info["ssl_valid"]
+    f["ssl_days_left"] = ssl_info["ssl_days_left"]
+    f["ssl_self_signed"] = ssl_info["ssl_self_signed"]
+    f["ssl_wildcard"] = ssl_info["ssl_wildcard"]
 
     # ---- ضمان الترتيب والاكتمال ----------------------------------------
     return {name: f[name] for name in FEATURE_NAMES}

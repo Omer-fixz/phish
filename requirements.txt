@@ -6,3 +6,5 @@ scikit-learn
 xgboost
 tldextract
 joblib
+python-whois
+cryptography
