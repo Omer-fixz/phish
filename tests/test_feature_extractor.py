@@ -53,13 +53,13 @@ def run_feature_tests():
     print("\n=== 1. سلامة البنية العامة ===")
     # ===========================================================================
     f = extract_features("https://www.example.com/path?a=1")
-    check("عدد الخصائص = 37", len(f), 37)
+    check("عدد الخصائص = 42", len(f), 42)
     check("لا تكرار في أسماء الخصائص", len(set(FEATURE_NAMES)), len(FEATURE_NAMES))
     check("مفاتيح المخرجات مطابقة لـ FEATURE_NAMES",
           list(f.keys()), FEATURE_NAMES)
     check("كل القيم أرقام",
           all(isinstance(v, (int, float)) for v in f.values()), True)
-    check("طول المتجه = 37", len(features_to_vector("http://a.com")), 37)
+    check("طول المتجه = 42", len(features_to_vector("http://a.com")), 42)
 
     # ===========================================================================
     print("\n=== 2. معالجة المدخلات المشوّهة (لا يجب أن ينهار) ===")
@@ -71,13 +71,13 @@ def run_feature_tests():
     for case in edge_cases:
         try:
             r = extract_features(case)
-            if len(r) != 37:
+            if len(r) != 42:
                 crashed.append(case)
         except Exception as e:  # noqa: BLE001
             crashed.append(f"{case} -> {e}")
     check("كل الحالات الحدّية تُعالَج بدون انهيار", crashed, [])
 
-    check("None لا يسبب خطأ", len(extract_features(None)), 37)
+    check("None لا يسبب خطأ", len(extract_features(None)), 42)
 
     # ===========================================================================
     print("\n=== 3. إضافة البروتوكول تلقائياً ===")
