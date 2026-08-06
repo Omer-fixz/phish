@@ -276,6 +276,13 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+# موقع التدريب: صفحة مستقلة على /training مخصّصة للتدريب فقط.
+# فُصلت عن صفحة الفحص لأن وظيفتهما مختلفة تماماً: الأولى للمستخدم
+# النهائي، وهذه لمن يبني النموذج.
+from src.api.training import router as training_router
+app.include_router(training_router)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     """

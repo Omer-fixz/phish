@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<!-- =========================================================
+     موقع التدريب — صفحة مخصّصة للتدريب فقط
+     =========================================================
+     منفصلة تماماً عن صفحة الفحص (/). وظيفتها:
+       1. عرض دراسة الخصائص الـ42 وحالة كل واحدة في البيانات
+       2. اختيار الخصائص والنماذج
+       3. تشغيل التدريب ومتابعة تقدّمه
+       4. عرض النتائج وحفظ النموذج
+     ========================================================= -->
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>موقع تدريب نموذج كشف التصيد</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: "Segoe UI", Tahoma, sans-serif; }
+    /* شريط التقدّم ينمو بسلاسة بدل القفز */
+    #barFill { transition: width .4s ease; }
+  </style>
+</head>
+
+<body class="bg-slate-100 min-h-screen py-8 px-4">
+<div class="max-w-6xl mx-auto">
+
+  <!-- ===== الترويسة ===== -->
+  <header class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-3xl font-bold text-slate-800">⚙️ موقع تدريب النموذج</h1>
+      <p class="text-slate-600 mt-1">اختر الخصائص والنماذج، ثم درّب وقارن — بالتقسيم حسب النطاق</p>
+    </div>
+    <a href="/" class="text-sm bg-white border border-slate-300 rounded-lg px-4 py-2
+                       hover:bg-slate-50 text-slate-700">↩ صفحة الفحص</a>
+  </header>
+
+  <!-- ===== ملخص البيانات ===== -->
+  <div id="datasetBox" class="bg-white rounded-xl shadow p-4 mb-5 text-sm text-slate-700">
+    جاري قراءة البيانات...
+  </div>
+
+  <!-- ===== دراسة الخصائص ===== -->
+  <div class="bg-white rounded-xl shadow p-5 mb-5">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <h2 class="text-xl font-bold text-slate-800">1 · دراسة الخصائص</h2>
+      <div class="flex gap-2 text-xs">
+        <button onclick="selectAll(true)"  class="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50">تحديد كل المتاح</button>
+        <button onclick="selectAll(false)" class="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50">إلغاء الكل</button>
+      </div>
+    </div>
+
+    <p class="text-xs text-slate-500 mb-4">
+      «قوة التمييز» = الفرق بين متوسط الفئتين مقسوماً على الانحراف المعياري.
+      كلما ارتفعت دلّت على قدرة أعلى على الفصل. الخصائص الميتة (قيمتها ثابتة)
+      والخصائص غير الموجودة في البيانات معطَّلة تلقائياً.
+    </p>
+
+    <div id="groups" class="space-y-4"></div>
+
+    <div class="mt-4 pt-3 border-t text-sm text-slate-600">
+      المحدَّد: <span id="selCount" class="font-bold text-slate-900">0</span> خاصية
+    </div>
+  </div>
+
+  <!-- ===== اختيار النماذج ===== -->
+  <div class="bg-white rounded-xl shadow p-5 mb-5">
+    <h2 class="text-xl font-bold text-slate-800 mb-3">2 · النماذج المقارَنة</h2>
+    <div id="families" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+  </div>
+
+  <!-- ===== التشغيل ===== -->
+  <div class="bg-white rounded-xl shadow p-5 mb-5">
+    <h2 class="text-xl font-bold text-slate-800 mb-3">3 · التدريب</h2>
+
+    <button id="runBtn" onclick="startTraining()"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5
+                   rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
+      ابدأ التدريب
+    </button>
+    <span class="text-xs text-slate-500 mr-2">التقسيم 70/15/15 حسب النطاق · بذرة ثابتة 42</span>
+
+    <!-- شريط التقدّم -->
+    <div id="progressBox" class="hidden mt-4">
+      <div class="flex justify-between text-xs text-slate-600 mb-1">
+        <span id="progMsg">...</span><span id="progPct">0%</span>
+      </div>
+      <div class="w-full bg-slate-200 rounded-full h-2.5">
+        <div id="barFill" class="bg-blue-600 h-2.5 rounded-full" style="width:0%"></div>
+      </div>
+      <div id="logBox" class="mt-3 bg-slate-900 text-slate-100 rounded-lg p-3 text-xs
+                              font-mono h-40 overflow-y-auto leading-relaxed"></div>
+    </div>
+
+    <div id="errBox" class="hidden mt-4 bg-red-50 border border-red-300 text-red-800 rounded-lg p-3 text-sm"></div>
+  </div>
+
+  <!-- ===== النتائج ===== -->
+  <div id="results" class="hidden space-y-5"></div>
+</div>
+
+
+<script>
+// =========================================================
+// الحالة العامة للصفحة
+// =========================================================
+let CATALOG = null;                 // دراسة الخصائص القادمة من الخادم
+const SELECTED = new Set();         // الخصائص المحدَّدة
+const FAMILIES = [                  // عائلات النماذج المتاحة
+  { id: "Logistic Regression", label: "الانحدار اللوجستي", desc: "خط أساس خطي — يقيس ما يمكن بلوغه بعلاقة بسيطة", on: true },
+  { id: "Decision Tree",       label: "شجرة القرار",       desc: "شجرة مفردة — تُظهر القدرة قبل التجميع", on: true },
+  { id: "Random Forest",       label: "الغابة العشوائية",  desc: "تجميع متوازٍ — يقلل التباين", on: true },
+  { id: "XGBoost",             label: "XGBoost",           desc: "تعزيز متتابع — كل شجرة تصحح سابقتها", on: true },
+];
+let poller = null;                  // مؤقّت استعلام الحالة
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
+
+
+// =========================================================
+// تحميل دراسة الخصائص عند فتح الصفحة
+// =========================================================
+async function loadFeatures() {
+  try {
+    const res = await fetch("/training/features");
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.status); }
+    CATALOG = await res.json();
+    renderDataset();
+    renderGroups();
+    renderFamilies();
+  } catch (e) {
+    $("datasetBox").innerHTML =
+      `<span class="text-red-700">تعذّر قراءة البيانات: ${esc(e.message)}</span>`;
+  }
+}
+
+function renderDataset() {
+  const d = CATALOG;
+  const usable = d.usable.length, total = d.features.length;
+  $("datasetBox").innerHTML = `
+    <div class="grid sm:grid-cols-4 gap-3 text-center">
+      <div><div class="text-2xl font-bold text-slate-800">${d.rows.toLocaleString()}</div><div class="text-xs text-slate-500">رابط</div></div>
+      <div><div class="text-2xl font-bold text-slate-800">${d.domains.toLocaleString()}</div><div class="text-xs text-slate-500">نطاق فريد</div></div>
+      <div><div class="text-2xl font-bold text-slate-800">${(d.phishing_ratio*100).toFixed(1)}%</div><div class="text-xs text-slate-500">نسبة التصيد</div></div>
+      <div><div class="text-2xl font-bold ${usable < total ? 'text-amber-600' : 'text-green-700'}">${usable} / ${total}</div><div class="text-xs text-slate-500">خاصية صالحة</div></div>
+    </div>`;
+}
+
+// ---- عرض الخصائص مقسّمة حسب مجموعاتها الدلالية ----
+function renderGroups() {
+  const byGroup = {};
+  CATALOG.features.forEach(f => { (byGroup[f.group] ||= []).push(f); });
+
+  $("groups").innerHTML = Object.entries(byGroup).map(([group, feats]) => {
+    const usable = feats.filter(f => f.available && !f.dead).length;
+    const rows = feats.map(f => {
+      const ok = f.available && !f.dead;
+      if (ok) SELECTED.add(f.name);                     // المتاح محدَّد افتراضياً
+      const power = f.power === null ? "—" : f.power.toFixed(3);
+      // شريط بصري يوضح قوة التمييز نسبةً إلى 1.0
+      const bar = f.power === null ? 0 : Math.min(f.power * 100, 100);
+      return `
+        <label class="flex items-center gap-3 p-2 rounded ${ok ? 'hover:bg-slate-50 cursor-pointer' : 'opacity-50'}">
+          <input type="checkbox" data-feature="${esc(f.name)}" ${ok ? "checked" : "disabled"}
+                 onchange="toggleFeature(this)" class="w-4 h-4">
+          <span class="font-mono text-xs text-slate-800 flex-1">${esc(f.name)}</span>
+          <span class="w-28 bg-slate-200 rounded-full h-1.5 hidden sm:block">
+            <span class="bg-blue-500 h-1.5 rounded-full block" style="width:${bar}%"></span>
+          </span>
+          <span class="text-xs text-slate-500 w-12 text-left">${power}</span>
+          ${ok ? "" : `<span class="text-[10px] bg-amber-100 text-amber-800 rounded px-2 py-0.5">${esc(f.reason)}</span>`}
+        </label>`;
+    }).join("");
+
+    return `
+      <details class="border border-slate-200 rounded-lg" ${usable ? "open" : ""}>
+        <summary class="cursor-pointer px-3 py-2 bg-slate-50 rounded-t-lg font-semibold text-slate-800 text-sm">
+          ${esc(group)}
+          <span class="text-xs font-normal text-slate-500">— ${usable} من ${feats.length} صالحة</span>
+        </summary>
+        <div class="p-2 divide-y divide-slate-100">${rows}</div>
+      </details>`;
+  }).join("");
+
+  updateCount();
+}
+
+function renderFamilies() {
+  $("families").innerHTML = FAMILIES.map(f => `
+    <label class="border border-slate-200 rounded-lg p-3 cursor-pointer hover:bg-slate-50 block">
+      <div class="flex items-center gap-2">
+        <input type="checkbox" data-family="${esc(f.id)}" ${f.on ? "checked" : ""} class="w-4 h-4">
+        <span class="font-semibold text-slate-800 text-sm">${esc(f.label)}</span>
+      </div>
+      <p class="text-xs text-slate-500 mt-1">${esc(f.desc)}</p>
+    </label>`).join("");
+}
+
+function toggleFeature(cb) {
+  cb.checked ? SELECTED.add(cb.dataset.feature) : SELECTED.delete(cb.dataset.feature);
+  updateCount();
+}
+
+function selectAll(on) {
+  document.querySelectorAll("[data-feature]:not(:disabled)").forEach(cb => {
+    cb.checked = on;
+    on ? SELECTED.add(cb.dataset.feature) : SELECTED.delete(cb.dataset.feature);
+  });
+  updateCount();
+}
+
+function updateCount() { $("selCount").textContent = SELECTED.size; }
+
+
+// =========================================================
+// بدء التدريب ومتابعته
+// =========================================================
+async function startTraining() {
+  const families = [...document.querySelectorAll("[data-family]:checked")].map(c => c.dataset.family);
+
+  $("errBox").classList.add("hidden");
+  if (!SELECTED.size)  return showError("اختر خاصية واحدة على الأقل.");
+  if (!families.length) return showError("اختر نموذجاً واحداً على الأقل.");
+
+  $("runBtn").disabled = true;
+  $("runBtn").textContent = "جاري التدريب...";
+  $("results").classList.add("hidden");
+  $("progressBox").classList.remove("hidden");
+  $("logBox").innerHTML = "";
+
+  try {
+    const res = await fetch("/training/start", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features: [...SELECTED], families }),
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail || res.status); }
+    poller = setInterval(pollStatus, 1000);      // نستعلم عن الحالة كل ثانية
+  } catch (e) {
+    showError(e.message);
+    resetButton();
+  }
+}
+
+async function pollStatus() {
+  try {
+    const s = await (await fetch("/training/status")).json();
+
+    $("progPct").textContent = s.percent + "%";
+    $("progMsg").textContent = s.message;
+    $("barFill").style.width = s.percent + "%";
+
+    // نعيد رسم السجل كاملاً — عدد الأسطر صغير فلا مشكلة في الأداء
+    $("logBox").innerHTML = s.log.map(l =>
+      `<div><span class="text-slate-500">[${String(l.percent).padStart(3)}%]</span> ${esc(l.message)}</div>`
+    ).join("");
+    $("logBox").scrollTop = $("logBox").scrollHeight;
+
+    if (!s.running) {
+      clearInterval(poller);
+      resetButton();
+      if (s.error) { showError(s.error); $("barFill").classList.replace("bg-blue-600", "bg-red-500"); }
+      else if (s.result) renderResults(s.result);
+    }
+  } catch (e) {
+    clearInterval(poller); resetButton();
+    showError("انقطع الاتصال بالخادم: " + e.message);
+  }
+}
+
+function resetButton() { $("runBtn").disabled = false; $("runBtn").textContent = "ابدأ التدريب"; }
+function showError(msg) { $("errBox").textContent = msg; $("errBox").classList.remove("hidden"); }
+
+
+// =========================================================
+// عرض النتائج
+// =========================================================
+function renderResults(r) {
+  const m = r.test_metrics, c = r.confusion;
+  const pct = (v) => (v * 100).toFixed(1) + "%";
+
+  const metricCard = (label, value, strong) => `
+    <div class="bg-white rounded-lg p-3 text-center border ${strong ? 'border-blue-300' : 'border-slate-200'}">
+      <div class="text-2xl font-bold ${strong ? 'text-blue-700' : 'text-slate-800'}">${value}</div>
+      <div class="text-xs text-slate-500 mt-0.5">${label}</div>
+    </div>`;
+
+  const compRows = r.comparison.map((x, i) => `
+    <tr class="${i === 0 ? 'bg-blue-50 font-semibold' : ''} border-b border-slate-100">
+      <td class="py-2 px-3">${i === 0 ? "🏆 " : ""}${esc(x.family)}</td>
+      <td class="py-2 px-3 text-xs text-slate-500 font-mono">${esc(x.params)}</td>
+      <td class="py-2 px-3 text-center">${x.accuracy}</td>
+      <td class="py-2 px-3 text-center">${x.precision}</td>
+      <td class="py-2 px-3 text-center">${x.recall}</td>
+      <td class="py-2 px-3 text-center">${x.f1}</td>
+      <td class="py-2 px-3 text-center">${x.roc_auc}</td>
+      <td class="py-2 px-3 text-center text-xs text-slate-500">${x.seconds}ث</td>
+    </tr>`).join("");
+
+  const impRows = r.importance.map(x => `
+    <div class="flex items-center gap-2 text-xs py-1">
+      <span class="font-mono text-slate-700 w-56 truncate">${esc(x.name)}</span>
+      <span class="flex-1 bg-slate-200 rounded-full h-2">
+        <span class="bg-indigo-500 h-2 rounded-full block" style="width:${x.value / r.importance[0].value * 100}%"></span>
+      </span>
+      <span class="text-slate-500 w-12 text-left">${x.value}</span>
+    </div>`).join("");
+
+  $("results").innerHTML = `
+    <!-- المقاييس النهائية -->
+    <div class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-xl font-bold text-slate-800 mb-1">4 · النتيجة النهائية</h2>
+      <p class="text-xs text-slate-500 mb-4">
+        ${esc(r.winner.family)} (${esc(r.winner.params)}) · عتبة ${r.threshold} ·
+        ${r.dataset.features} خاصية · اختبار على ${r.dataset.test.toLocaleString()} رابط
+      </p>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        ${metricCard("Accuracy", m.accuracy, true)}
+        ${metricCard("Precision", m.precision)}
+        ${metricCard("Recall", m.recall, true)}
+        ${metricCard("F1", m.f1)}
+        ${metricCard("ROC-AUC", m.roc_auc, true)}
+      </div>
+
+      ${r.leakage_warning ? `
+        <div class="mt-4 bg-red-50 border border-red-300 text-red-800 rounded-lg p-3 text-sm">
+          🚨 الدقة تتجاوز 97% — على هذه البيانات يعني ذلك تسريباً غالباً. لا تقبل الرقم قبل تفسيره.
+        </div>` : ""}
+
+      <!-- مصفوفة الالتباس -->
+      <div class="mt-5 grid sm:grid-cols-2 gap-4">
+        <div>
+          <h3 class="font-semibold text-slate-700 text-sm mb-2">مصفوفة الالتباس</h3>
+          <table class="w-full text-sm border border-slate-200 rounded overflow-hidden">
+            <tr class="bg-slate-50"><th class="p-2"></th><th class="p-2">مُتنبَّأ شرعي</th><th class="p-2">مُتنبَّأ تصيد</th></tr>
+            <tr><th class="p-2 bg-slate-50 text-right">فعلي شرعي</th>
+                <td class="p-2 text-center bg-green-50">${c.tn.toLocaleString()}</td>
+                <td class="p-2 text-center bg-amber-50">${c.fp.toLocaleString()}</td></tr>
+            <tr><th class="p-2 bg-slate-50 text-right">فعلي تصيد</th>
+                <td class="p-2 text-center bg-red-50">${c.fn.toLocaleString()}</td>
+                <td class="p-2 text-center bg-green-50">${c.tp.toLocaleString()}</td></tr>
+          </table>
+          <p class="text-xs text-slate-600 mt-2">
+            هجمات فائتة: <b class="text-red-700">${pct(r.error_rates.fnr)}</b> ·
+            إنذارات كاذبة: <b class="text-amber-700">${pct(r.error_rates.fpr)}</b>
+          </p>
+        </div>
+
+        <!-- أثر التقسيم -->
+        <div>
+          <h3 class="font-semibold text-slate-700 text-sm mb-2">أثر طريقة التقسيم</h3>
+          <table class="w-full text-sm border border-slate-200 rounded overflow-hidden">
+            <tr class="border-b border-slate-100"><td class="p-2">تقسيم عشوائي</td>
+                <td class="p-2 text-center font-mono">${r.random_split_accuracy}</td>
+                <td class="p-2 text-xs text-red-700">متضخّم</td></tr>
+            <tr class="border-b border-slate-100"><td class="p-2">حسب النطاق</td>
+                <td class="p-2 text-center font-mono font-bold">${m.accuracy}</td>
+                <td class="p-2 text-xs text-green-700">معتمد</td></tr>
+            <tr class="bg-slate-50"><td class="p-2 font-semibold">حجم التضخّم</td>
+                <td class="p-2 text-center font-mono font-bold">${(r.leak_gap * 100).toFixed(1)}</td>
+                <td class="p-2 text-xs text-slate-600">نقطة مئوية</td></tr>
+          </table>
+          <p class="text-xs text-slate-500 mt-2">
+            هذا الفرق هو حجم التسريب الذي تجنّبناه بالتقسيم حسب النطاق.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- جدول المقارنة -->
+    <div class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-lg font-bold text-slate-800 mb-1">جدول المقارنة</h2>
+      <p class="text-xs text-slate-500 mb-3">على مجموعة التحقق عند عتبة 0.5 — الأفضل من كل عائلة</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-50 text-slate-600 text-xs">
+            <tr><th class="py-2 px-3 text-right">النموذج</th><th class="py-2 px-3 text-right">المعاملات</th>
+                <th class="py-2 px-3">Accuracy</th><th class="py-2 px-3">Precision</th>
+                <th class="py-2 px-3">Recall</th><th class="py-2 px-3">F1</th>
+                <th class="py-2 px-3">ROC-AUC</th><th class="py-2 px-3">الزمن</th></tr>
+          </thead>
+          <tbody>${compRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    ${r.importance.length ? `
+    <div class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-lg font-bold text-slate-800 mb-3">أهم الخصائص في قرار النموذج</h2>
+      ${impRows}
+    </div>` : ""}
+
+    <!-- الحفظ -->
+    <div class="bg-white rounded-xl shadow p-5">
+      <h2 class="text-lg font-bold text-slate-800 mb-3">5 · حفظ النموذج</h2>
+      <div class="flex gap-2 flex-wrap items-center">
+        <button onclick="saveModel(false)" class="bg-slate-700 hover:bg-slate-800 text-white px-5 py-2 rounded-lg text-sm">
+          حفظ نسخة مؤرَّخة
+        </button>
+        <button onclick="saveModel(true)" class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg text-sm">
+          اعتماده نموذجاً رسمياً
+        </button>
+      </div>
+      <p class="text-xs text-slate-500 mt-2">
+        «الاعتماد» يستبدل model.joblib الذي يستخدمه مسار الفحص، بعد أخذ نسخة احتياطية تلقائية.
+      </p>
+      <div id="saveMsg" class="hidden mt-3 text-sm rounded-lg p-3"></div>
+    </div>`;
+
+  $("results").classList.remove("hidden");
+  $("results").scrollIntoView({ behavior: "smooth" });
+}
+
+
+// =========================================================
+// حفظ النموذج
+// =========================================================
+async function saveModel(promote) {
+  if (promote && !confirm("سيُستبدل النموذج الرسمي الذي يستخدمه مسار الفحص. متابعة؟")) return;
+  const box = $("saveMsg");
+  try {
+    const res = await fetch("/training/save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promote }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || res.status);
+    box.className = "mt-3 text-sm rounded-lg p-3 bg-green-50 border border-green-300 text-green-800";
+    box.textContent = `حُفظ في ${d.saved}` +
+      (d.promoted ? ` · اعتُمد رسمياً${d.backup ? ` (نسخة احتياطية: ${d.backup})` : ""} — ${d.note}` : "");
+  } catch (e) {
+    box.className = "mt-3 text-sm rounded-lg p-3 bg-red-50 border border-red-300 text-red-800";
+    box.textContent = "فشل الحفظ: " + e.message;
+  }
+  box.classList.remove("hidden");
+}
+
+
+loadFeatures();     // البدء
+</script>
+</body>
+</html>
