@@ -279,8 +279,17 @@ async def security_headers(request: Request, call_next):
 # موقع التدريب: صفحة مستقلة على /training مخصّصة للتدريب فقط.
 # فُصلت عن صفحة الفحص لأن وظيفتهما مختلفة تماماً: الأولى للمستخدم
 # النهائي، وهذه لمن يبني النموذج.
-from src.api.training import router as training_router
-app.include_router(training_router)
+#
+# لا تُسجَّل مساراتها إلا إذا كان ENABLE_TRAINING مضبوطاً، لأنها تستهلك
+# المعالج وتكتب ملفات نماذج. وعدم تسجيلها أقوى من رفض الطلب: المسار
+# غير موجود أصلاً، ولا يظهر في /docs، فلا يعلم أحد بوجود الميزة.
+from src.api import training as training_module
+
+if training_module.ENABLED:
+    app.include_router(training_module.router)
+    log.info("موقع التدريب مُفعَّل على /training")
+else:
+    log.info("موقع التدريب مُعطَّل (اضبط ENABLE_TRAINING=1 لتفعيله محلياً)")
 
 
 @app.get("/", response_class=HTMLResponse)

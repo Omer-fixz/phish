@@ -160,6 +160,45 @@ def run_api_checks():
     check("الرمز السري لا يظهر في السجل", "SUPERSECRET123" not in logged)
     check("السجل يحوي بصمة قصيرة للتتبع", bool(_re.search(r"بصمة=[0-9a-f]{10}", logged)))
 
+    # =====================================================================
+    print("\n=== 9. حماية موقع التدريب ===")
+    # =====================================================================
+    # موقع التدريب يستهلك المعالج ويكتب ملفات نماذج، فيجب ألا يكون
+    # متاحاً إلا بتفعيل صريح عبر متغير البيئة.
+    import os as _os
+    from src.api import training as _training
+
+    enabled = _training.ENABLED
+    print(f"        (ENABLE_TRAINING الحالي = {_os.getenv('ENABLE_TRAINING', 'غير مضبوط')})")
+
+    # نفحص السلوك الفعلي عبر HTTP لا البنية الداخلية للتطبيق،
+    # لأن السلوك هو العقد الذي يهم فعلاً ولا يتغير بتغير إصدار الإطار.
+    page = client.get("/training").status_code
+    feats = client.get("/training/features").status_code
+    start = client.post("/training/start",
+                        json={"features": ["url_length"],
+                              "families": ["Decision Tree"]}).status_code
+    save = client.post("/training/save", json={"promote": False}).status_code
+
+    if enabled:
+        check(f"صفحة التدريب تُقدَّم ({page})", page == 200)
+        check(f"مسار الخصائص يعمل ({feats})", feats == 200)
+        check("مسار بدء التدريب موجود", start != 404)
+    else:
+        check(f"صفحة التدريب غير موجودة ({page})", page == 404)
+        check(f"مسار الخصائص غير موجود ({feats})", feats == 404)
+        check(f"مسار بدء التدريب غير موجود ({start})", start == 404)
+        check(f"مسار الحفظ غير موجود ({save})", save == 404)
+
+    # نفحص منطق القرار نفسه، لا الحالة الراهنة فقط:
+    # كل قيمة غير معروفة — وغياب المتغير — يجب أن تعني الإغلاق.
+    check("غياب المتغير يعني الإغلاق", _training.is_enabled(None) is False)
+    check("قيمة فارغة تعني الإغلاق", _training.is_enabled("") is False)
+    check("قيمة 0 تعني الإغلاق", _training.is_enabled("0") is False)
+    check("قيمة غير معروفة تعني الإغلاق", _training.is_enabled("maybe") is False)
+    check("القيم المقبولة تُفعّل",
+          all(_training.is_enabled(v) for v in ("1", "true", "TRUE", " yes ", "on")))
+
     print("\n" + "=" * 55)
     print(f"النتيجة: نجح {passed} | فشل {failed}")
     print("=" * 55)

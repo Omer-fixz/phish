@@ -39,27 +39,46 @@
     جاري قراءة البيانات...
   </div>
 
-  <!-- ===== دراسة الخصائص ===== -->
+  <!-- ===== دراسة الخصائص — لوحة منسدلة ===== -->
   <div class="bg-white rounded-xl shadow p-5 mb-5">
-    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-      <h2 class="text-xl font-bold text-slate-800">1 · دراسة الخصائص</h2>
-      <div class="flex gap-2 text-xs">
-        <button onclick="selectAll(true)"  class="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50">تحديد كل المتاح</button>
-        <button onclick="selectAll(false)" class="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50">إلغاء الكل</button>
+    <h2 class="text-xl font-bold text-slate-800 mb-3">1 · الخصائص</h2>
+
+    <!-- زرّا التحديد السريع -->
+    <div class="flex gap-2 flex-wrap mb-3">
+      <button onclick="selectAll(true)"
+              class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">
+        ✓ تحديد جميع الخصائص
+      </button>
+      <button onclick="selectAll(false)"
+              class="border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm px-4 py-2 rounded-lg">
+        إلغاء التحديد
+      </button>
+    </div>
+
+    <!-- اللوحة المنسدلة: مغلقة افتراضياً حتى لا تُغرق الصفحة بـ42 سطراً -->
+    <div class="border border-slate-300 rounded-lg">
+      <button onclick="togglePanel()" id="panelBtn"
+              class="w-full flex items-center justify-between px-4 py-3 text-right
+                     hover:bg-slate-50 rounded-lg">
+        <span class="font-semibold text-slate-800 text-sm">
+          الخصائص المحدَّدة: <span id="selCount" class="text-blue-700">0</span>
+          <span class="text-slate-400 font-normal">من <span id="totalCount">0</span></span>
+        </span>
+        <span id="panelArrow" class="text-slate-500 text-xs">▼ عرض التفاصيل</span>
+      </button>
+
+      <div id="panelBody" class="hidden border-t border-slate-200 p-4">
+        <p class="text-xs text-slate-500 mb-3">
+          «قوة التمييز» = الفرق بين متوسط الفئتين مقسوماً على الانحراف المعياري.
+          كلما ارتفعت دلّت على قدرة أعلى على الفصل. الخصائص الميتة (قيمتها ثابتة)
+          وغير الموجودة في البيانات معطَّلة تلقائياً.
+        </p>
+        <div id="groups" class="space-y-3"></div>
       </div>
     </div>
 
-    <p class="text-xs text-slate-500 mb-4">
-      «قوة التمييز» = الفرق بين متوسط الفئتين مقسوماً على الانحراف المعياري.
-      كلما ارتفعت دلّت على قدرة أعلى على الفصل. الخصائص الميتة (قيمتها ثابتة)
-      والخصائص غير الموجودة في البيانات معطَّلة تلقائياً.
-    </p>
-
-    <div id="groups" class="space-y-4"></div>
-
-    <div class="mt-4 pt-3 border-t text-sm text-slate-600">
-      المحدَّد: <span id="selCount" class="font-bold text-slate-900">0</span> خاصية
-    </div>
+    <!-- ملخص سريع للمجموعات يظهر دائماً دون فتح اللوحة -->
+    <div id="groupChips" class="flex flex-wrap gap-2 mt-3"></div>
   </div>
 
   <!-- ===== اختيار النماذج ===== -->
@@ -96,6 +115,45 @@
 
   <!-- ===== النتائج ===== -->
   <div id="results" class="hidden space-y-5"></div>
+
+  <!-- ===== لوحة فحص روابط بالنموذج المدرَّب ===== -->
+  <div class="bg-white rounded-xl shadow p-5 mt-5">
+    <h2 class="text-xl font-bold text-slate-800 mb-1">🔗 فحص روابطك</h2>
+    <p class="text-xs text-slate-500 mb-4">
+      جرّب النموذج على روابط تختارها بنفسك. الصق الروابط أو ارفع ملفاً
+      (رابط في كل سطر). لإضافة التصنيف الحقيقي وحساب الدقة اكتب
+      <code class="bg-slate-100 px-1 rounded">example.com/login,1</code>
+      حيث 1 تصيد و0 شرعي. <b>الروابط لا تُفتح إطلاقاً — تُحلَّل كنصوص فقط.</b>
+    </p>
+
+    <textarea id="urlsInput" rows="6" dir="ltr" placeholder="google.com
+paypal.secure-login.tk/verify
+bit.ly/3xK9pQ,1"
+      class="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs
+             focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+
+    <div class="flex gap-2 flex-wrap items-center mt-3">
+      <button onclick="evaluateUrls()" id="evalBtn"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold
+                     px-5 py-2 rounded-lg text-sm disabled:opacity-50">
+        افحص الروابط
+      </button>
+
+      <label class="border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg
+                    text-sm cursor-pointer text-slate-700">
+        📁 رفع ملف
+        <input type="file" id="fileInput" accept=".txt,.csv" class="hidden"
+               onchange="loadFile(this)">
+      </label>
+
+      <span id="urlCount" class="text-xs text-slate-500">0 رابط</span>
+      <button onclick="document.getElementById('urlsInput').value=''; countUrls();"
+              class="text-xs text-slate-500 hover:text-slate-700 underline">تفريغ</button>
+    </div>
+
+    <div id="evalError" class="hidden mt-3 bg-red-50 border border-red-300 text-red-800 rounded-lg p-3 text-sm"></div>
+    <div id="evalOut" class="hidden mt-4"></div>
+  </div>
 </div>
 
 
@@ -182,7 +240,25 @@ function renderGroups() {
       </details>`;
   }).join("");
 
+  renderChips(byGroup);
   updateCount();
+}
+
+// شرائح ملخّصة تُظهر حالة كل مجموعة دون فتح اللوحة المنسدلة
+function renderChips(byGroup) {
+  $("groupChips").innerHTML = Object.entries(byGroup).map(([group, feats]) => {
+    const usable = feats.filter(f => f.available && !f.dead).length;
+    const tone = usable === 0 ? "bg-red-50 text-red-700 border-red-200"
+               : usable < feats.length ? "bg-amber-50 text-amber-800 border-amber-200"
+               : "bg-green-50 text-green-800 border-green-200";
+    return `<span class="text-xs border rounded-full px-3 py-1 ${tone}">
+              ${esc(group)} ${usable}/${feats.length}</span>`;
+  }).join("");
+}
+
+function togglePanel() {
+  const body = $("panelBody"), open = body.classList.toggle("hidden");
+  $("panelArrow").textContent = open ? "▼ عرض التفاصيل" : "▲ إخفاء التفاصيل";
 }
 
 function renderFamilies() {
@@ -209,7 +285,129 @@ function selectAll(on) {
   updateCount();
 }
 
-function updateCount() { $("selCount").textContent = SELECTED.size; }
+function updateCount() {
+  $("selCount").textContent = SELECTED.size;
+  const usable = CATALOG ? CATALOG.usable.length : 0;
+  $("totalCount").textContent = usable;
+}
+
+
+// =========================================================
+// لوحة فحص الروابط
+// =========================================================
+function parseUrls() {
+  // سطر لكل رابط، مع تجاهل الفارغ وسطر العناوين المعتاد في ملفات CSV
+  return $("urlsInput").value.split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(s => s && !/^url\s*,\s*label$/i.test(s));
+}
+
+function countUrls() { $("urlCount").textContent = parseUrls().length + " رابط"; }
+
+function loadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    // نضيف إلى الموجود بدل استبداله، ليمكن دمج أكثر من ملف
+    const cur = $("urlsInput").value.trim();
+    $("urlsInput").value = (cur ? cur + "\n" : "") + reader.result.trim();
+    countUrls();
+  };
+  reader.onerror = () => showEvalError("تعذّرت قراءة الملف");
+  reader.readAsText(file, "utf-8");
+  input.value = "";                     // نُفرغه ليمكن رفع الملف نفسه مجدداً
+}
+
+async function evaluateUrls() {
+  const urls = parseUrls();
+  $("evalError").classList.add("hidden");
+  $("evalOut").classList.add("hidden");
+
+  if (!urls.length) return showEvalError("الصق روابط أو ارفع ملفاً أولاً.");
+  if (urls.length > 5000) return showEvalError("الحد الأقصى 5000 رابط في المرة الواحدة.");
+
+  $("evalBtn").disabled = true;
+  $("evalBtn").textContent = "جاري الفحص...";
+  try {
+    const res = await fetch("/training/evaluate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || res.status);
+    renderEval(d);
+  } catch (e) {
+    showEvalError(e.message);
+  } finally {
+    $("evalBtn").disabled = false;
+    $("evalBtn").textContent = "افحص الروابط";
+  }
+}
+
+function showEvalError(msg) {
+  $("evalError").textContent = msg;
+  $("evalError").classList.remove("hidden");
+}
+
+function renderEval(d) {
+  const s = d.summary;
+
+  // مقاييس تظهر فقط إن أرفق المستخدم التصنيفات الحقيقية
+  const scored = s.labeled ? `
+    <div class="grid grid-cols-3 gap-2 mt-3">
+      <div class="bg-blue-50 border border-blue-200 rounded p-2 text-center">
+        <div class="text-lg font-bold text-blue-800">${(s.accuracy*100).toFixed(1)}%</div>
+        <div class="text-[11px] text-slate-600">الدقة على ${s.labeled} مصنَّفاً</div></div>
+      <div class="bg-green-50 border border-green-200 rounded p-2 text-center">
+        <div class="text-lg font-bold text-green-800">${s.recall !== undefined ? (s.recall*100).toFixed(1)+"%" : "—"}</div>
+        <div class="text-[11px] text-slate-600">الكشف</div></div>
+      <div class="bg-amber-50 border border-amber-200 rounded p-2 text-center">
+        <div class="text-lg font-bold text-amber-800">${s.fpr !== undefined ? (s.fpr*100).toFixed(1)+"%" : "—"}</div>
+        <div class="text-[11px] text-slate-600">إنذارات كاذبة</div></div>
+    </div>` : `
+    <p class="text-xs text-slate-500 mt-2">
+      لم تُرفق تصنيفات حقيقية، فعُرضت التنبؤات دون حساب دقة.
+      أضف <code class="bg-slate-100 px-1 rounded">,1</code> أو
+      <code class="bg-slate-100 px-1 rounded">,0</code> بعد الرابط لحسابها.
+    </p>`;
+
+  const rows = d.results.map(r => {
+    const phish = r.label === 1;
+    const mark = r.correct === null ? "" : (r.correct ? "✔" : "✘");
+    return `
+      <tr class="border-b border-slate-100 ${r.correct === false ? 'bg-red-50' : ''}">
+        <td class="py-1.5 px-2 font-mono text-[11px] break-all max-w-md" dir="ltr">${esc(r.url)}</td>
+        <td class="py-1.5 px-2 text-center">
+          <span class="text-xs px-2 py-0.5 rounded ${phish ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}">
+            ${phish ? "تصيد" : "شرعي"}</span></td>
+        <td class="py-1.5 px-2 text-center font-mono text-xs">${r.probability}</td>
+        <td class="py-1.5 px-2 text-center text-xs">${r.truth === null ? "—" : r.truth}</td>
+        <td class="py-1.5 px-2 text-center ${r.correct === false ? 'text-red-600' : 'text-green-600'}">${mark}</td>
+      </tr>`;
+  }).join("");
+
+  $("evalOut").innerHTML = `
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+      <div class="text-sm text-slate-700">
+        فُحص <b>${s.total}</b> رابطاً بـ<b>${esc(s.model_source)}</b> عند عتبة ${s.threshold} —
+        <span class="text-red-700">${s.phishing} تصيد</span> ·
+        <span class="text-green-700">${s.legitimate} شرعي</span>
+        ${s.failed ? ` · <span class="text-amber-700">${s.failed} تعذّر تحليله</span>` : ""}
+      </div>
+      ${scored}
+    </div>
+    <div class="overflow-x-auto max-h-96 overflow-y-auto mt-3 border border-slate-200 rounded-lg">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-600 text-xs sticky top-0">
+          <tr><th class="py-2 px-2 text-right">الرابط</th><th class="py-2 px-2">التصنيف</th>
+              <th class="py-2 px-2">الاحتمال</th><th class="py-2 px-2">الحقيقي</th><th class="py-2 px-2"></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  $("evalOut").classList.remove("hidden");
+}
 
 
 // =========================================================
@@ -434,6 +632,8 @@ async function saveModel(promote) {
   box.classList.remove("hidden");
 }
 
+
+$("urlsInput").addEventListener("input", countUrls);   // تحديث العدّاد أثناء الكتابة
 
 loadFeatures();     // البدء
 </script>
