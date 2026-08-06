@@ -123,9 +123,9 @@ def build_features(df):
     rows = []                                                  # قائمة سنجمع فيها قاموس كل رابط
     start = time.time()                                        # بداية حساب الوقت
 
-    print("⚙️ جاري استخراج الخصائص (دقيقتان تقريباً)...")
+    print("⚙️ جاري استخراج الخصائص (قد يستغرق وقتًا إذا كان الإنترنت متاحًا)...")
     for i, url in enumerate(df["url"], start=1):               # المرور على الروابط واحداً واحداً
-        rows.append(extract_features(url))                     # استدعاء المستخرج الرسمي — لا شيء غيره
+        rows.append(extract_features(url, network="auto"))     # الاكتشاف التلقائي: يستخدم الإنترنت إن كان متاحًا
         if i % CHUNK_REPORT == 0:                              # كل عشرة آلاف رابط
             print(f"   🔄 {i} / {len(df)}")                     # رسالة تطمئن أن الكود يعمل
 

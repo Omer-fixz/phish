@@ -36,7 +36,8 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from src.paths import MODELS_DIR, MODEL_FILE, FEATURES_JSON, ROOT
-from src.trainer import FEATURE_GROUPS, analyze_features, run_training
+from src.trainer import (FEATURE_GROUPS, analyze_features, run_training,
+                         add_custom_links, custom_summary, clear_custom_links)
 
 router = APIRouter(prefix="/training", tags=["training"])
 
@@ -179,6 +180,41 @@ def start(req: TrainRequest):
 
     threading.Thread(target=worker, daemon=True).start()
     return {"started": True}
+
+
+class AddDataRequest(BaseModel):
+    """
+    روابط يضيفها المستخدم إلى بيانات التدريب.
+
+    التصنيف إلزامي مع كل رابط بصيغة `الرابط,1` أو `الرابط,0`،
+    لأن التدريب بلا تصنيف مستحيل.
+    """
+    lines: list[str] = Field(..., min_length=1, max_length=20000,
+                             description="سطر لكل رابط بصيغة url,label")
+
+
+@router.get("/data")
+def get_custom_data():
+    """ملخّص بيانات التدريب الإضافية المحفوظة حالياً."""
+    return custom_summary()
+
+
+@router.post("/data")
+def post_custom_data(req: AddDataRequest):
+    """
+    يضيف روابط المستخدم إلى بيانات التدريب.
+
+    الاستخراج بلا اتصال بالشبكة، فإضافة آلاف الروابط تستغرق ثوانٍ.
+    """
+    result = add_custom_links(req.lines)
+    result["summary"] = custom_summary()
+    return result
+
+
+@router.delete("/data")
+def delete_custom_data():
+    """يحذف كل بيانات التدريب الإضافية ويُبقي الأصل سليماً."""
+    return {"deleted": clear_custom_links()}
 
 
 @router.post("/evaluate")

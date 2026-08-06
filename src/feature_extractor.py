@@ -97,19 +97,40 @@ _HEX_RE = re.compile(r"%[0-9a-fA-F]{2}")
 # مهلة الاتصال بالشبكة (ثوانٍ) — قصيرة لضمان استجابة سريعة للـ API
 _NET_TIMEOUT = 5
 
+# تخزين نتيجة فحص الإنترنت لتجنب الفحص المتكرر
+_INTERNET_AVAILABLE = None
+
+def _check_internet_connection() -> bool:
+    """
+    يتحقق من توفر الإنترنت بمحاولة الاتصال بـ DNS عام (8.8.8.8).
+    
+    ملاحظة: يُستدعى مرة واحدة فقط لكل جلسة، والنتيجة تُخزن في _INTERNET_AVAILABLE.
+    """
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        return True
+    except (socket.error, socket.timeout):
+        return False
+
 
 # ---------------------------------------------------------------------------
 # دوال فحص الشبكة (Domain Age / WHOIS / SSL)
 # ---------------------------------------------------------------------------
 
-def _get_domain_age_days(hostname: str) -> int:
+def _get_domain_age_days(hostname: str, use_network: bool = True) -> int:
     """
     يحسب عمر النطاق بالأيام من تاريخ التسجيل حتى اليوم عبر WHOIS.
 
     المواقع الشرعية عادةً مسجَّلة منذ سنوات.
     مواقع التصيد كثيراً ما تُنشأ وتُستخدم خلال أيام أو أسابيع.
     القيمة -1 تعني تعذّر الحصول على المعلومة (موقع غير موجود، WHOIS محجوب...).
+    
+    المعاملات:
+        hostname: اسم النطاق
+        use_network: True لاستخدام WHOIS، False لإرجاع -1 مباشرة
     """
+    if not use_network:
+        return -1
     try:
         import whois  # python-whois
         w = whois.whois(hostname)
@@ -127,7 +148,7 @@ def _get_domain_age_days(hostname: str) -> int:
         return -1
 
 
-def _get_ssl_info(hostname: str) -> dict:
+def _get_ssl_info(hostname: str, use_network: bool = True) -> dict:
     """
     يتصل بالموقع على المنفذ 443 ويستخرج معلومات شهادة SSL/TLS.
 
@@ -136,6 +157,10 @@ def _get_ssl_info(hostname: str) -> dict:
         ssl_days_left    : أيام المتبقية لانتهاء الشهادة (-1 إن تعذّر)
         ssl_self_signed  : 1 إن كانت الشهادة موقّعة ذاتياً (Self-Signed)
         ssl_wildcard     : 1 إن كانت شهادة بدل (*) — أحياناً مؤشر مشبوه
+    
+    المعاملات:
+        hostname: اسم النطاق
+        use_network: True لاستخدام SSL، False لإرجاع قيم افتراضية
     """
     result = {
         "ssl_valid": 0,
@@ -143,7 +168,7 @@ def _get_ssl_info(hostname: str) -> dict:
         "ssl_self_signed": 0,
         "ssl_wildcard": 0,
     }
-    if not hostname:
+    if not use_network or not hostname:
         return result
     try:
         ctx = ssl.create_default_context()
@@ -295,12 +320,25 @@ FEATURE_NAMES = [
 # الدالة الرئيسية
 # ---------------------------------------------------------------------------
 
-def extract_features(url: str) -> dict:
+def extract_features(url: str, network: bool | str = "auto") -> dict:
     """
     استخراج كل الخصائص من رابط واحد.
 
+    المعامل network:
+        - False: لا يُجري أي اتصال بالشبكة إطلاقاً. الخصائص الشبكية 
+          الخمس تأخذ قيمها المحايدة (-1 / 0). هذا الوضع آمن وسريع.
+        
+        - True: يستعلم عن WHOIS ويُجري مصافحة TLS على المنفذ 443.
+          لا يُحمّل محتوى الصفحة ولا ينفّذ أي كود منها.
+        
+        - "auto" (الافتراضي): يكتشف توفر الإنترنت تلقائيًا:
+          * إن كان الإنترنت متاحًا → يستخدم الميزات الشبكية (مثل True)
+          * إن كان الإنترنت معطلاً → يستخدم القيم الافتراضية (مثل False)
+          * الفحص يحدث مرة واحدة فقط لكل جلسة لتجنب التأخير
+
     المعامل:
         url : الرابط كنص. يقبل الروابط بدون بروتوكول والروابط المشوّهة.
+        network : "auto" | True | False - التحكم في استخدام الميزات الشبكية
 
     المخرجات:
         قاموس (dict) مفاتيحه هي FEATURE_NAMES وقيمه أرقام.
@@ -448,13 +486,28 @@ def extract_features(url: str) -> dict:
     f["entropy_domain"] = round(_shannon_entropy(domain), 6)
 
     # ---- المجموعة 8: خصائص الشبكة (Domain Age / WHOIS / SSL) ----------
-    # ملاحظة: هذه الخصائص تتطلب اتصالاً بالإنترنت وتستغرق ثوانٍ.
-    # تُعطى قيمة افتراضية آمنة (-1 / 0) إن تعذّر الاتصال.
-    f["domain_age_days"] = _get_domain_age_days(hostname) if hostname else -1
-    ssl_info = _get_ssl_info(hostname) if hostname else {
-        "ssl_valid": 0, "ssl_days_left": -1,
-        "ssl_self_signed": 0, "ssl_wildcard": 0,
-    }
+    # القيم المحايدة (-1 / 0) هي نفسها التي تُرجَع عند تعذّر الاتصال،
+    # فلا يستطيع النموذج التمييز بين «لم نتصل» و«فشل الاتصال».
+    _neutral_ssl = {"ssl_valid": 0, "ssl_days_left": -1,
+                    "ssl_self_signed": 0, "ssl_wildcard": 0}
+
+    # تحديد ما إذا كان يجب استخدام الميزات الشبكية
+    use_network = network
+    if network == "auto":
+        # اكتشاف تلقائي: نفحص الإنترنت مرة واحدة فقط في الجلسة
+        global _INTERNET_AVAILABLE
+        if _INTERNET_AVAILABLE is None:
+            _INTERNET_AVAILABLE = _check_internet_connection()
+        use_network = _INTERNET_AVAILABLE
+    
+    # استخراج الميزات الشبكية حسب التوفر
+    if use_network and hostname:
+        f["domain_age_days"] = _get_domain_age_days(hostname, use_network=True)
+        ssl_info = _get_ssl_info(hostname, use_network=True)
+    else:
+        f["domain_age_days"] = -1
+        ssl_info = _neutral_ssl
+    
     f["ssl_valid"] = ssl_info["ssl_valid"]
     f["ssl_days_left"] = ssl_info["ssl_days_left"]
     f["ssl_self_signed"] = ssl_info["ssl_self_signed"]

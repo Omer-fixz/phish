@@ -87,9 +87,45 @@
     <div id="families" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
   </div>
 
+  <!-- ===== بيانات تدريب إضافية ===== -->
+  <div class="bg-white rounded-xl shadow p-5 mb-5 border-r-4 border-emerald-500">
+    <h2 class="text-xl font-bold text-slate-800 mb-1">3 · بيانات تدريب إضافية <span class="text-sm font-normal text-slate-500">(اختياري)</span></h2>
+    <p class="text-xs text-slate-500 mb-3">
+      أضف روابطك إلى بيانات التدريب. <b>التصنيف إلزامي</b> لأن النموذج
+      يتعلم من الإجابة الصحيحة: اكتب
+      <code class="bg-slate-100 px-1 rounded">example.com/login,1</code>
+      حيث <b>1 تصيد</b> و<b>0 شرعي</b>. الاستخراج بلا اتصال بالشبكة فالإضافة فورية.
+    </p>
+
+    <textarea id="trainData" rows="5" dir="ltr" placeholder="paypal-verify.tk/login,1
+my-university.edu/courses,0"
+      class="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono text-xs
+             focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+
+    <div class="flex gap-2 flex-wrap items-center mt-3">
+      <button onclick="addTrainData()" id="addDataBtn"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold
+                     px-5 py-2 rounded-lg text-sm disabled:opacity-50">
+        ➕ أضف إلى بيانات التدريب
+      </button>
+      <label class="border border-slate-300 hover:bg-slate-50 px-4 py-2 rounded-lg
+                    text-sm cursor-pointer text-slate-700">
+        📁 رفع ملف
+        <input type="file" id="trainFile" accept=".txt,.csv" class="hidden"
+               onchange="loadTrainFile(this)">
+      </label>
+      <span id="trainCount" class="text-xs text-slate-500">0 سطر</span>
+    </div>
+
+    <div id="dataMsg" class="hidden mt-3 text-sm rounded-lg p-3"></div>
+
+    <!-- ملخّص ما هو مخزَّن حالياً -->
+    <div id="dataSummary" class="mt-3 text-sm text-slate-600"></div>
+  </div>
+
   <!-- ===== التشغيل ===== -->
   <div class="bg-white rounded-xl shadow p-5 mb-5">
-    <h2 class="text-xl font-bold text-slate-800 mb-3">3 · التدريب</h2>
+    <h2 class="text-xl font-bold text-slate-800 mb-3">4 · التدريب</h2>
 
     <button id="runBtn" onclick="startTraining()"
             class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5
@@ -163,6 +199,7 @@ bit.ly/3xK9pQ,1"
 // =========================================================
 let CATALOG = null;                 // دراسة الخصائص القادمة من الخادم
 const SELECTED = new Set();         // الخصائص المحدَّدة
+const NETWORK_GROUP = "خصائص شبكية";  // المجموعة التي تُميَّز بلون بنفسجي
 const FAMILIES = [                  // عائلات النماذج المتاحة
   { id: "Logistic Regression", label: "الانحدار اللوجستي", desc: "خط أساس خطي — يقيس ما يمكن بلوغه بعلاقة بسيطة", on: true },
   { id: "Decision Tree",       label: "شجرة القرار",       desc: "شجرة مفردة — تُظهر القدرة قبل التجميع", on: true },
@@ -211,6 +248,8 @@ function renderGroups() {
 
   $("groups").innerHTML = Object.entries(byGroup).map(([group, feats]) => {
     const usable = feats.filter(f => f.available && !f.dead).length;
+    const isNet = group === NETWORK_GROUP;              // مجموعة الخصائص الشبكية
+
     const rows = feats.map(f => {
       const ok = f.available && !f.dead;
       if (ok) SELECTED.add(f.name);                     // المتاح محدَّد افتراضياً
@@ -218,23 +257,35 @@ function renderGroups() {
       // شريط بصري يوضح قوة التمييز نسبةً إلى 1.0
       const bar = f.power === null ? 0 : Math.min(f.power * 100, 100);
       return `
-        <label class="flex items-center gap-3 p-2 rounded ${ok ? 'hover:bg-slate-50 cursor-pointer' : 'opacity-50'}">
+        <label class="flex items-center gap-3 p-2 rounded
+                      ${isNet ? 'bg-purple-50/60' : ''}
+                      ${ok ? 'hover:bg-slate-50 cursor-pointer' : 'opacity-60'}">
           <input type="checkbox" data-feature="${esc(f.name)}" ${ok ? "checked" : "disabled"}
                  onchange="toggleFeature(this)" class="w-4 h-4">
-          <span class="font-mono text-xs text-slate-800 flex-1">${esc(f.name)}</span>
+          <span class="font-mono text-xs flex-1 ${isNet ? 'text-purple-800 font-semibold' : 'text-slate-800'}">
+            ${isNet ? "🌐 " : ""}${esc(f.name)}</span>
           <span class="w-28 bg-slate-200 rounded-full h-1.5 hidden sm:block">
-            <span class="bg-blue-500 h-1.5 rounded-full block" style="width:${bar}%"></span>
+            <span class="${isNet ? 'bg-purple-500' : 'bg-blue-500'} h-1.5 rounded-full block" style="width:${bar}%"></span>
           </span>
           <span class="text-xs text-slate-500 w-12 text-left">${power}</span>
-          ${ok ? "" : `<span class="text-[10px] bg-amber-100 text-amber-800 rounded px-2 py-0.5">${esc(f.reason)}</span>`}
+          ${ok ? "" : `<span class="text-[10px] rounded px-2 py-0.5
+                        ${isNet ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-800'}">${esc(f.reason)}</span>`}
         </label>`;
     }).join("");
 
+    // الخصائص الشبكية تُميَّز بلون بنفسجي وإطار متقطّع لأنها مختلفة
+    // في طبيعتها: تحتاج اتصالاً بالشبكة، وغير موجودة في البيانات.
     return `
-      <details class="border border-slate-200 rounded-lg" ${usable ? "open" : ""}>
-        <summary class="cursor-pointer px-3 py-2 bg-slate-50 rounded-t-lg font-semibold text-slate-800 text-sm">
-          ${esc(group)}
-          <span class="text-xs font-normal text-slate-500">— ${usable} من ${feats.length} صالحة</span>
+      <details class="rounded-lg border-2 ${isNet ? 'border-purple-300 border-dashed bg-purple-50/30' : 'border-slate-200'}"
+               ${usable ? "open" : ""}>
+        <summary class="cursor-pointer px-3 py-2 rounded-t-lg font-semibold text-sm
+                        ${isNet ? 'bg-purple-100 text-purple-900' : 'bg-slate-50 text-slate-800'}">
+          ${isNet ? "🌐 " : ""}${esc(group)}
+          <span class="text-xs font-normal ${isNet ? 'text-purple-700' : 'text-slate-500'}">— ${usable} من ${feats.length} صالحة</span>
+          ${isNet ? `<div class="text-[11px] font-normal text-purple-700 mt-1">
+              تتطلب اتصالاً بالشبكة (WHOIS و TLS) وغير موجودة في ملف البيانات،
+              فلا يمكن التدريب عليها حالياً. الفحص يعمل بلا اتصال إطلاقاً.
+            </div>` : ""}
         </summary>
         <div class="p-2 divide-y divide-slate-100">${rows}</div>
       </details>`;
@@ -248,11 +299,15 @@ function renderGroups() {
 function renderChips(byGroup) {
   $("groupChips").innerHTML = Object.entries(byGroup).map(([group, feats]) => {
     const usable = feats.filter(f => f.available && !f.dead).length;
-    const tone = usable === 0 ? "bg-red-50 text-red-700 border-red-200"
+    // الشبكية لها لون خاص بها دائماً، بغض النظر عن عدد الصالح فيها
+    const tone = group === NETWORK_GROUP
+                 ? "bg-purple-100 text-purple-800 border-purple-400 border-dashed"
+               : usable === 0 ? "bg-red-50 text-red-700 border-red-200"
                : usable < feats.length ? "bg-amber-50 text-amber-800 border-amber-200"
                : "bg-green-50 text-green-800 border-green-200";
+    const icon = group === NETWORK_GROUP ? "🌐 " : "";
     return `<span class="text-xs border rounded-full px-3 py-1 ${tone}">
-              ${esc(group)} ${usable}/${feats.length}</span>`;
+              ${icon}${esc(group)} ${usable}/${feats.length}</span>`;
   }).join("");
 }
 
@@ -289,6 +344,99 @@ function updateCount() {
   $("selCount").textContent = SELECTED.size;
   const usable = CATALOG ? CATALOG.usable.length : 0;
   $("totalCount").textContent = usable;
+}
+
+
+// =========================================================
+// لوحة بيانات التدريب الإضافية
+// =========================================================
+function parseLines(id) {
+  return $(id).value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+}
+
+function countTrain() { $("trainCount").textContent = parseLines("trainData").length + " سطر"; }
+
+function loadTrainFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const cur = $("trainData").value.trim();
+    $("trainData").value = (cur ? cur + "\n" : "") + reader.result.trim();
+    countTrain();
+  };
+  reader.readAsText(file, "utf-8");
+  input.value = "";
+}
+
+async function addTrainData() {
+  const lines = parseLines("trainData");
+  if (!lines.length) return showDataMsg("الصق روابط مصنَّفة أو ارفع ملفاً أولاً.", false);
+
+  $("addDataBtn").disabled = true;
+  $("addDataBtn").textContent = "جاري الإضافة...";
+  try {
+    const res = await fetch("/training/data", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || res.status);
+
+    let msg = `أُضيف ${d.added} رابطاً`;
+    if (d.duplicates_removed) msg += ` · حُذف ${d.duplicates_removed} مكرراً`;
+    if (d.rejected.length) {
+      // نعرض أسباب الرفض بوضوح بدل ابتلاعها صامتة
+      const shown = d.rejected.slice(0, 5).map(r => `«${esc(r.line.slice(0, 50))}» — ${esc(r.why)}`);
+      msg += `<div class="mt-2 text-xs"><b>رُفض ${d.rejected.length} سطراً:</b><br>${shown.join("<br>")}` +
+             (d.rejected.length > 5 ? `<br>… و${d.rejected.length - 5} غيرها` : "") + "</div>";
+    }
+    showDataMsg(msg, d.added > 0);
+    if (d.added) $("trainData").value = "";      // نُفرغ ما نجح فقط
+    countTrain();
+    renderDataSummary(d.summary);
+  } catch (e) {
+    showDataMsg("فشلت الإضافة: " + esc(e.message), false);
+  } finally {
+    $("addDataBtn").disabled = false;
+    $("addDataBtn").textContent = "➕ أضف إلى بيانات التدريب";
+  }
+}
+
+function showDataMsg(html, ok) {
+  const box = $("dataMsg");
+  box.className = "mt-3 text-sm rounded-lg p-3 " + (ok
+    ? "bg-emerald-50 border border-emerald-300 text-emerald-800"
+    : "bg-amber-50 border border-amber-300 text-amber-800");
+  box.innerHTML = html;
+  box.classList.remove("hidden");
+}
+
+async function loadDataSummary() {
+  try { renderDataSummary(await (await fetch("/training/data")).json()); } catch (e) {}
+}
+
+function renderDataSummary(s) {
+  if (!s || !s.total) { $("dataSummary").innerHTML =
+    `<span class="text-slate-400 text-xs">لا توجد بيانات إضافية — سيُدرَّب على الملف الأصلي وحده.</span>`; return; }
+
+  $("dataSummary").innerHTML = `
+    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <span>مخزَّن حالياً: <b>${s.total}</b> رابط
+          (<span class="text-red-700">${s.phishing} تصيد</span> ·
+           <span class="text-green-700">${s.legitimate} شرعي</span>) على ${s.domains} نطاقاً
+          — ستُضاف تلقائياً في التدريب القادم</span>
+        <button onclick="clearTrainData()" class="text-xs text-red-700 hover:underline">حذف الكل</button>
+      </div>
+    </div>`;
+}
+
+async function clearTrainData() {
+  if (!confirm("سيُحذف كل ما أضفته من بيانات تدريب. متابعة؟")) return;
+  const d = await (await fetch("/training/data", { method: "DELETE" })).json();
+  showDataMsg(`حُذف ${d.deleted} رابطاً.`, true);
+  loadDataSummary();
 }
 
 
@@ -506,7 +654,7 @@ function renderResults(r) {
   $("results").innerHTML = `
     <!-- المقاييس النهائية -->
     <div class="bg-white rounded-xl shadow p-5">
-      <h2 class="text-xl font-bold text-slate-800 mb-1">4 · النتيجة النهائية</h2>
+      <h2 class="text-xl font-bold text-slate-800 mb-1">5 · النتيجة النهائية</h2>
       <p class="text-xs text-slate-500 mb-4">
         ${esc(r.winner.family)} (${esc(r.winner.params)}) · عتبة ${r.threshold} ·
         ${r.dataset.features} خاصية · اختبار على ${r.dataset.test.toLocaleString()} رابط
@@ -589,7 +737,7 @@ function renderResults(r) {
 
     <!-- الحفظ -->
     <div class="bg-white rounded-xl shadow p-5">
-      <h2 class="text-lg font-bold text-slate-800 mb-3">5 · حفظ النموذج</h2>
+      <h2 class="text-lg font-bold text-slate-800 mb-3">6 · حفظ النموذج</h2>
       <div class="flex gap-2 flex-wrap items-center">
         <button onclick="saveModel(false)" class="bg-slate-700 hover:bg-slate-800 text-white px-5 py-2 rounded-lg text-sm">
           حفظ نسخة مؤرَّخة
@@ -634,8 +782,10 @@ async function saveModel(promote) {
 
 
 $("urlsInput").addEventListener("input", countUrls);   // تحديث العدّاد أثناء الكتابة
+$("trainData").addEventListener("input", countTrain);
 
-loadFeatures();     // البدء
+loadFeatures();       // دراسة الخصائص
+loadDataSummary();    // ملخّص بيانات التدريب الإضافية
 </script>
 </body>
 </html>

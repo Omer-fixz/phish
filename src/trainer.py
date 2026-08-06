@@ -26,8 +26,13 @@ from xgboost import XGBClassifier
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                              f1_score, roc_auc_score, confusion_matrix)
 
-from src.paths import DATASET_CSV
-from src.feature_extractor import FEATURE_NAMES
+from src.paths import DATASET_CSV, PROCESSED_DIR
+from src.feature_extractor import FEATURE_NAMES, extract_features, get_domain
+
+# ملف بيانات التدريب الإضافية التي يضيفها المستخدم من الموقع.
+# يُحفظ منفصلاً عن ملف البيانات الأصلي حتى يبقى الأصل سليماً،
+# ويمكن مسح الإضافات دون إعادة بناء أي شيء.
+CUSTOM_CSV = PROCESSED_DIR / "custom_links.csv"
 
 # ---------------------------------------------------------
 # ثوابت منهجية — مطابقة لسكربت التدريب
@@ -51,6 +56,112 @@ FEATURE_GROUPS = {
     "خصائص إحصائية": FEATURE_NAMES[35:37],
     "خصائص شبكية": FEATURE_NAMES[37:42],
 }
+
+
+# =========================================================
+# 1ب. بيانات التدريب الإضافية التي يضيفها المستخدم
+# =========================================================
+def parse_labeled_lines(lines):
+    """
+    يفكّك أسطر المستخدم إلى (رابط، تصنيف).
+
+    الصيغة المقبولة: `الرابط,التصنيف` حيث 1 تصيد و0 شرعي.
+    التصنيف إلزامي هنا — بخلاف لوحة الفحص — لأن التدريب بلا تصنيف
+    مستحيل: النموذج يتعلم من الإجابة الصحيحة.
+
+    يُرجع: (الصفوف الصالحة، أسباب رفض غير الصالحة)
+    """
+    rows, rejected = [], []
+    for raw in lines:
+        line = str(raw).strip().strip('"').strip("'")
+        if not line or line.lower().replace(" ", "") in ("url,label", "link,label"):
+            continue                                   # سطر فارغ أو سطر عناوين
+
+        if "," not in line:
+            rejected.append({"line": line, "why": "بلا تصنيف — أضف ,1 أو ,0"})
+            continue
+
+        url, _, label = line.rpartition(",")
+        url, label = url.strip(), label.strip()
+        if label not in ("0", "1"):
+            rejected.append({"line": line, "why": f"تصنيف غير صالح: {label}"})
+            continue
+        if not url or "." not in url:
+            rejected.append({"line": line, "why": "رابط غير صالح"})
+            continue
+        if " " in url:
+            rejected.append({"line": line, "why": "الرابط يحتوي مسافة خام"})
+            continue
+
+        rows.append((url, int(label)))
+    return rows, rejected
+
+
+def add_custom_links(lines):
+    """
+    يضيف روابط المستخدم إلى ملف بيانات التدريب الإضافية.
+
+    الاستخراج بلا اتصال بالشبكة (network=False)، لسببين: السرعة،
+    وأن الخصائص الشبكية غير موجودة في البيانات الأصلية أصلاً فلا
+    يصح أن تُملأ لبعض الصفوف دون بعض.
+    """
+    rows, rejected = parse_labeled_lines(lines)
+    if not rows:
+        return {"added": 0, "rejected": rejected, "total": count_custom()}
+
+    records = []
+    for url, label in rows:
+        feats = extract_features(url)                  # بلا شبكة
+        records.append({"url": url, "domain": get_domain(url), **feats, "label": label})
+
+    new = pd.DataFrame(records)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    if CUSTOM_CSV.exists():                            # ندمج مع الموجود
+        old = pd.read_csv(CUSTOM_CSV, low_memory=False)
+        new = pd.concat([old, new], ignore_index=True)
+
+    before = len(new)
+    new = new.drop_duplicates(subset=["url"], keep="last")   # الأحدث يغلب
+    new.to_csv(CUSTOM_CSV, index=False, encoding="utf-8")
+
+    return {"added": len(rows), "duplicates_removed": before - len(new),
+            "rejected": rejected, "total": len(new)}
+
+
+def load_custom_links():
+    """يقرأ بيانات التدريب الإضافية إن وُجدت."""
+    if not CUSTOM_CSV.exists():
+        return None
+    df = pd.read_csv(CUSTOM_CSV, low_memory=False)
+    return df if len(df) else None
+
+
+def count_custom():
+    """عدد الروابط الإضافية المحفوظة حالياً."""
+    df = load_custom_links()
+    return 0 if df is None else len(df)
+
+
+def custom_summary():
+    """ملخّص بيانات التدريب الإضافية لعرضه في الواجهة."""
+    df = load_custom_links()
+    if df is None:
+        return {"total": 0, "phishing": 0, "legitimate": 0, "domains": 0, "sample": []}
+    return {
+        "total": len(df),
+        "phishing": int((df["label"] == 1).sum()),
+        "legitimate": int((df["label"] == 0).sum()),
+        "domains": int(df["domain"].nunique()),
+        "sample": df[["url", "label"]].tail(20).to_dict("records"),
+    }
+
+
+def clear_custom_links():
+    """يحذف كل بيانات التدريب الإضافية."""
+    n = count_custom()
+    CUSTOM_CSV.unlink(missing_ok=True)
+    return n
 
 
 # =========================================================
@@ -223,7 +334,7 @@ def choose_threshold(model, parts, scaler, needs_scaling):
 # =========================================================
 # 7. التدريب الكامل
 # =========================================================
-def run_training(features, families, progress):
+def run_training(features, families, progress, use_custom=True):
     """
     يُجري دورة تدريب كاملة على الخصائص والنماذج المختارة.
 
@@ -236,6 +347,21 @@ def run_training(features, families, progress):
     """
     progress(2, "قراءة البيانات...")
     df = pd.read_csv(DATASET_CSV, low_memory=False)
+    base_rows = len(df)
+    custom_rows = 0
+
+    # ---- دمج روابط المستخدم إن وُجدت --------------------------------
+    if use_custom:
+        custom = load_custom_links()
+        if custom is not None:
+            # نُبقي الأعمدة المشتركة فقط، ونتجاهل أي رابط مكرر مع الأصل
+            shared = [c for c in df.columns if c in custom.columns]
+            custom = custom[shared]
+            custom = custom[~custom["url"].isin(set(df["url"]))]
+            if len(custom):
+                df = pd.concat([df, custom], ignore_index=True)
+                custom_rows = len(custom)
+                progress(4, f"أُضيف {custom_rows} رابطاً من بياناتك إلى التدريب")
 
     missing = [f for f in features if f not in df.columns]
     if missing:
@@ -328,6 +454,7 @@ def run_training(features, families, progress):
     return {
         "dataset": {"rows": len(df), "domains": int(groups.nunique()),
                     "features": len(features),
+                    "base_rows": base_rows, "custom_rows": custom_rows,
                     "train": len(parts["train"][0]), "val": len(parts["val"][0]),
                     "test": len(parts["test"][0])},
         "comparison": [{k: v for k, v in r.items() if k != "model"}
