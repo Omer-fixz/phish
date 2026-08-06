@@ -1,0 +1,22 @@
+# Railway - ملفات لا نحتاجها في Production
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env.local
+.vercel/
+.vscode/
+.claude/
+
+# بيانات التطوير
+data/raw/
+scripts/
+tests/
+archive/
+
+# توثيق التطوير
+docs/
+STRUCTURE.md
+README_NETWORK_FEATURES.md
+sorting.py
+test_*.py
