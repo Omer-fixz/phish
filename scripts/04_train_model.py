@@ -8,12 +8,10 @@
 #   4. يحفظ النموذج مع أسماء الخصائص بترتيبها الثابت
 # =========================================================
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 import sys, pathlib
 # نضيف جذر المشروع إلى مسار البحث حتى نستطيع استيراد src من أي مجلد
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-  # لعرض العربية في الشاشة بلا أخطاء
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # لعرض العربية في الشاشة بلا أخطاء
 
 import os                           # للتعامل مع المجلدات
 import json                         # لحفظ أسماء الخصائص في ملف JSON
@@ -66,11 +64,11 @@ def load_data():
     groups = df["domain"]                                      # المجموعات: النطاق، وعليه سيتم التقسيم
     X = df.drop(columns=["url", "domain", "label"])            # الخصائص فقط (بلا نص ولا هدف)
 
-    # الخاصية التي قيمتها ثابتة في كل الصفوف لا تحمل أي معلومة، فنحذفها
+    # تحذير: لا نحذف الخصائص الميتة (ذات القيمة الثابتة) لضمان التطابق مع feature_extractor.py
+    # حتى لو لم تساهم في التنبؤ، وجودها ضروري لتوافق الترتيب بين التدريب والإنتاج
     dead = [c for c in X.columns if X[c].nunique() <= 1]
     if dead:
-        X = X.drop(columns=dead)                               # الحذف الفعلي
-        print(f"🪦 حُذفت خصائص ميتة: {dead}")
+        print(f"⚠️  خصائص ميتة (لن تُحذف للتوافق): {dead}")
     print(f"📐 عدد الخصائص المستخدمة = {X.shape[1]}")
 
     return X, y, groups

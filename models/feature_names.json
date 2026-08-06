@@ -35,10 +35,5 @@
   "brand_in_wrong_place",
   "has_suspicious_tld",
   "entropy_url",
-  "entropy_domain",
-  "domain_age_days",
-  "ssl_valid",
-  "ssl_days_left",
-  "ssl_self_signed",
-  "ssl_wildcard"
+  "entropy_domain"
 ]
